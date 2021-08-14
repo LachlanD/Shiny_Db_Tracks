@@ -63,16 +63,18 @@ shinyUI(
                     tags$b("Double click plot for more details"), 
                     tags$br(),
                     tags$a(href="https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000", "Data Source: discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000", target="_blank"),
-                    tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", "CCA 4.0", target = "_blank")
+                    tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", "CCA-4.0", target = "_blank")
                 ),
                 tabItem(tabName = "Vegetation",
                         withSpinner(plotOutput("vegPlot", width='100%', brush = "plot_brush", dblclick = "veg_click"), type = 8),
                         tags$b("Double click plot for more details"), 
                         tags$br(),
                         tags$a(href="https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta", "Data Source: discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta", target="_blank"),
-                        tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", "CCA 4.0", target = "_blank")
+                        tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", "CCA-4.0", target = "_blank")
                 ),
-                tabItem(tabName = "Statistics")
+                tabItem(tabName = "Statistics"),
+                tabItem(tabName = "GeoStats"),
+                tabItem(tabName = "SegStats")
             )
             
         )

@@ -424,7 +424,8 @@ shinyServer(function(input, output, session) {
                 tags$a(href=dat$replit_uri, "Lithology", target="_blank"),
                 tags$a(href=dat$geolut_uri, "Formation", target="_blank"),
                 tags$a(href=dat$repage_uri, "Age", target="_blank"),
-                easyClose = TRUE
+                easyClose = TRUE,
+                footer = NULL
         )}
     }
     
@@ -449,7 +450,8 @@ shinyServer(function(input, output, session) {
                          tags$b("Bioregion: "), dat$bioregion, tags$br(), 
                          tags$b("Status: "), dat$evcbcsdesc),
                 leaf_out,
-                easyClose = TRUE
+                easyClose = TRUE,
+                footer = NULL
             )}
     }
     
