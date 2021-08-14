@@ -537,7 +537,7 @@ shinyServer(function(input, output, session) {
     output$main_map <- renderLeaflet(map)
     
     output$geoStats <- renderPlot({
-        t <- trail_geo()
+        validate(need(t <- trail_geo(), message = FALSE))
         
         if(x_axis == 'd'){
             dat <- t[t$Dis>=x,]
@@ -558,14 +558,14 @@ shinyServer(function(input, output, session) {
         #     c[d[1,]$name.y] = c[d[1,]$name.y] + 1
         # }
         
-        ggplot(dat, aes(x=factor(name.y), fill=name.y, colour = geo_cl)) + 
+        ggplot(dat, aes(x=name.y, fill = geo_cl()[name.y])) + 
             geom_bar(stat="count") + 
             theme(axis.text.x = element_text(angle = 90), legend.position="none") +
             xlab(element_blank())
     })
         
     output$vegStats <- renderPlot({
-        t <- trail_veg()
+        validate(need(t <- trail_veg(), message = FALSE))
         
         if(x_axis == 'd'){
             dat <- t[t$Dis>=x,]
@@ -585,7 +585,7 @@ shinyServer(function(input, output, session) {
         #     c[d[1,]$name.y] = c[d[1,]$name.y] + 1
         #}
             
-        ggplot(dat, aes(x=factor(x_evcname), fill=x_evcname, colour=veg_cl)) + 
+        ggplot(dat, aes(x=x_evcname, fill = veg_cl()[x_evcname])) + 
             geom_bar(stat="count") + 
             theme(axis.text.x = element_text(angle = 90), legend.position="none") +
             xlab(element_blank())
