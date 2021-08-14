@@ -73,8 +73,8 @@ shinyUI(
                         tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", "CCA-4.0", target = "_blank")
                 ),
                 tabItem(tabName = "Statistics"),
-                tabItem(tabName = "GeoStats"),
-                tabItem(tabName = "SegStats")
+                tabItem(tabName = "GeoStats", plotOutput("geoStats")),
+                tabItem(tabName = "VegStats", plotOutput("vegStats"))
             )
             
         )

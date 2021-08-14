@@ -355,7 +355,7 @@ shinyServer(function(input, output, session) {
                 labs(x ="Distance (m)", y = "Elevation (m)") +
                 xlim(xmin, xmax) + 
                 scale_fill_manual(values = geo_cl(), name = "") + 
-                guides(color=guide_legend(ncol = 3))
+                guides(color=guide_legend(nrow = 5))
         } else {
             geo <- t[!is.na(t$time),]
             gg <- ggplot(data = t, aes(fill = name.y, group = GEO_GRP)) + 
@@ -364,7 +364,7 @@ shinyServer(function(input, output, session) {
                 labs(x ="Time", y = "Elevation (m)") +
                 xlim(as.POSIXct(xmin, origin = origin, tz = "Australia/Victoria"), as.POSIXct(xmax, origin = origin, tz = "Australia/Victoria"))  + 
                 scale_fill_manual(values = geo_cl(), name = "") + 
-                guides(color=guide_legend(ncol = 3))
+                guides(color=guide_legend(nrow = 5))
         }
         gg
     })
@@ -384,7 +384,7 @@ shinyServer(function(input, output, session) {
                 labs(x ="Distance (m)", y = "Elevation (m)") +
                 xlim(xmin, xmax) + 
                 scale_fill_manual(values = veg_cl(), name = "") +
-                guides(color=guide_legend(ncol = 3))
+                guides(color=guide_legend(nrow = 5))
         } else {
             geo <- t[!is.na(t$time),]
             gg <- ggplot(data = t, aes(fill = x_evcname, group = VEG_GRP)) + 
@@ -393,7 +393,7 @@ shinyServer(function(input, output, session) {
                 labs(x ="Time", y = "Elevation (m)" , name = "") +
                 xlim(as.POSIXct(xmin, origin = origin, tz = "Australia/Victoria"), as.POSIXct(xmax, origin = origin, tz = "Australia/Victoria"))  + 
                 scale_fill_manual(values = veg_cl(), name = "") + 
-                guides(color=guide_legend(ncol = 3))
+                guides(color=guide_legend(nrow = 5))
         }
         gg
     })
@@ -535,6 +535,61 @@ shinyServer(function(input, output, session) {
     })
     
     output$main_map <- renderLeaflet(map)
+    
+    output$geoStats <- renderPlot({
+        t <- trail_geo()
+        
+        if(x_axis == 'd'){
+            dat <- t[t$Dis>=x,]
+        } else {
+            dat <- t[t$time>=x,]
+        }
+        
+        #g <- max(t$GEO_GRP)
+        
+        #c <- rep(0, length(unique(t$name.y)))
+        #names(c) <- unique(t$name.y)
+        
+        #for(i in 1:g){
+        #     d<-t[t$GEO_GRP==g,]
+        #     
+        #     s <- max(d$Dis)-min(d$Dis)
+        #     
+        #     c[d[1,]$name.y] = c[d[1,]$name.y] + 1
+        # }
+        
+        ggplot(dat, aes(x=factor(name.y), fill=name.y, colour = geo_cl)) + 
+            geom_bar(stat="count") + 
+            theme(axis.text.x = element_text(angle = 90), legend.position="none") +
+            xlab(element_blank())
+    })
+        
+    output$vegStats <- renderPlot({
+        t <- trail_veg()
+        
+        if(x_axis == 'd'){
+            dat <- t[t$Dis>=x,]
+        } else {
+            dat <- t[t$time>=x,]
+        }    
+        #g <- max(t$GEO_GRP)
+            
+        #c <- rep(0, length(unique(t$name.y)))
+        #names(c) <- unique(t$name.y)
+            
+        #for(i in 1:g){
+        #     d<-t[t$GEO_GRP==g,]
+        #     
+        #     s <- max(d$Dis)-min(d$Dis)
+        #     
+        #     c[d[1,]$name.y] = c[d[1,]$name.y] + 1
+        #}
+            
+        ggplot(dat, aes(x=factor(x_evcname), fill=x_evcname, colour=veg_cl)) + 
+            geom_bar(stat="count") + 
+            theme(axis.text.x = element_text(angle = 90), legend.position="none") +
+            xlab(element_blank())
+    })
     
 })
 
