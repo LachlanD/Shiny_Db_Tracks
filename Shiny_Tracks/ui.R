@@ -36,7 +36,8 @@ shinyUI(
                          menuSubItem("Geology", tabName = "GeoStats"),
                          menuSubItem("Vegetation", tabName = "VegStats"),
                          tabName = "Statistics", icon = icon("chart-bar")
-                )
+                ),
+                menuItem("About", tabName = "About", icon = icon("info-circle"))
                 
             )
         ),
@@ -54,9 +55,15 @@ shinyUI(
             ),
             tabItems(
                 tabItem(tabName = "Files", 
+                        column(5,
                         fileInput("gpx", "Upload gpx file", multiple = FALSE, accept = c(".gpx")),
                         withSpinner(uiOutput("info", inline = TRUE), size = 0.5, type = 8, proxy.height = 150),
-                        radioButtons("x_axis", label = "x-axis", choiceNames = c("distance (m)", "time"), choiceValues = c('d', 't'), inline = TRUE)
+                        radioButtons("x_axis", label = "x-axis", choiceNames = c("distance (m)", "time"), choiceValues = c('d', 't'), inline = TRUE),
+                        textInput("name", "Save name", value = "", placeholder = "name"),
+                        actionButton("save", "Save")),
+                        column(5, selectizeInput("select", "load saved track", choices = NULL), actionButton("load", "Load")
+                            
+                        )
                 ),
                 tabItem(tabName = "Geology",
                     withSpinner(plotOutput("geoPlot", width='100%', brush = "plot_brush", dblclick = "geo_click"), type = 8),
@@ -73,8 +80,20 @@ shinyUI(
                         tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", "CCA-4.0", target = "_blank")
                 ),
                 tabItem(tabName = "Statistics"),
-                tabItem(tabName = "GeoStats", plotOutput("geoStats")),
-                tabItem(tabName = "VegStats", plotOutput("vegStats"))
+                tabItem(tabName = "GeoStats", withSpinner(plotOutput("geoStats"), type = 8)),
+                tabItem(tabName = "VegStats", withSpinner( plotOutput("vegStats"), type = 8)),
+                tabItem(tabName = "About", 
+                    column(width = 8,
+                        "Author: Lachlan Dryburgh 2021 ", 
+                        tags$a(href= "lachlan.d@gmail.com", "lachlan.d@gmail.com", target = "_blank"), tags$br(), tags$br(),
+                        "Written in R using the shiny web development framework, features leaflet maps, ggplot2, Simple Features packages.", tags$br(), tags$br(),
+                        "Data provided by open data vic under creative commons attribution international 4.0 ", 
+                        tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", "CCA-4.0", target = "_blank"), tags$br(),
+                        tags$a(href="https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000", "discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000", target="_blank"), tags$br(),
+                        tags$a(href="https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta", "discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta", target="_blank"), tags$br(), tags$br(),
+                        "Deployed on shinyapps.io, and AWS using PostgreSQL with the PostGIS extension.", offset = 1
+                    )
+                )
             )
             
         )
