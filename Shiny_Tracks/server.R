@@ -32,6 +32,7 @@ con <- dbConnect(RPostgres::Postgres(),
 #Set system variable
 sf_use_s2(FALSE)
 origin <- "1970-01-01" #R Epoch
+crs<-st_crs(7844)
 
 shinyServer(function(input, output, session) {
     #Main map initialise on Vic
@@ -48,7 +49,7 @@ shinyServer(function(input, output, session) {
     xmin <- 0
     xmax <- 100
     x_axis <- 'd'
-    trail <- reactiveValues()
+    track <- reactiveValues()
     
     
     query <- paste('SELECT ids, name FROM tracks')
@@ -61,23 +62,22 @@ shinyServer(function(input, output, session) {
         validate(need(input$select, message = FALSE))
         
         query <- paste("SELECT * FROM points WHERE track_fid =", input$select)
-        track <<- st_read(con, query = query, geometry_column = "geometry")
+        t <- st_read(con, query = query, geometry_column = "geometry")
         
-        bb <- as.numeric(st_bbox(track))
+        track$trail <- t
         
-        t <- track %>%
+        
+        bb <- as.numeric(st_bbox(t))
+        
+        t <- t %>%
             st_combine() %>%
             st_cast(to = "LINESTRING") %>%
             st_sf()
         
-        leafletProxy("main_map", session) %>%
-            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
-            addPolylines(data = t)
         
-        d<-sf::st_distance(track)
-        track$Dis <<- as.numeric(cumsum(d[1,]))/1000
-        if(!all(is.na(track$time))) {
-            track$time <- na.approx(as.numeric(track$time))
+        
+        if(!all(is.na(t$time))) {
+            t$time <- na.approx(as.numeric(track$time))
             updateRadioButtons(
                 session,
                 "x_axis",
@@ -112,38 +112,43 @@ shinyServer(function(input, output, session) {
     
     
     observeEvent(input$save, {
-        validate(need(track, message = "No file to uploaded"))
+        validate(need(trail(), message = "No file to uploaded"))
         validate(need(input$name, message = "track needs a name to save"))
         
-        bb<-st_bbox(track)
+        t<-trail()
+        bb<-st_bbox(t)
         
-        d<-data.frame(name = input$name, min.ele = min(track$ele), max.ele = max(track$ele), start = track$time[1], end = track$time[length(track)])
+        d<-data.frame(name = input$name, min.ele = min(t$ele), max.ele = max(t$ele), start = as.POSIXct(t$time[1], tz= "Australia/Victoria", origin = origin), end = as.POSIXct(t$time[nrow(t)], tz= "Australia/Victoria", origin = origin))
         sfc <- st_sfc(st_point(c(bb[1],bb[2])),st_point(c(bb[3],bb[4])))
         st_geometry(d)<-st_combine(sfc)
-        st_crs(d)<-st_crs(track)
+        st_crs(d)<-crs
         st_write(d, con, "tracks", append = TRUE)
+        
+        Sys.sleep(0.5)
         
         query<- paste("SELECT ids FROM tracks WHERE name ='", input$name, "'", sep = "")
         id <- dbGetQuery(con, query)
         
-        track$track_fid<-id[1,]
-        track$time<-as.POSIXct(track$time, tz= "Australia/Victoria", origin = origin)
+        t$track_fid<-id[1,]
+        t$time<-as.POSIXct(t$time, tz= "Australia/Victoria", origin = origin)
         
-        st_write(track, con, layer = "points", append = TRUE)
+        st_write(t, con, layer = "points", append = TRUE)
         
         query <- paste('SELECT ids, name FROM tracks')
         names <- dbGetQuery(con, query)
         n <- names$ids
         names(n)<-names$name
-        updateSelectizeInput(session, "select", choices = n)
+        updateSelectizeInput(session, "select", choices = n, selected = id[1,])
     })
     
     #Load gpx file and calculate the cumulative distance
-    trail <- reactive({
+    observe({
         validate(need(userFile(), message = FALSE))
 
         trail <- data.frame()
         trail <- sf::st_read(userFile()$datapath, layer = "track_points", quiet = TRUE)
+        
+        trail<-st_transform(trail, crs)
 
         d<-sf::st_distance(trail)
         trail$Dis <- as.numeric(cumsum(d[1,]))/1000
@@ -168,9 +173,14 @@ shinyServer(function(input, output, session) {
                 inline = TRUE
             )
         }
-        trail
+        track$trail<-trail
     })
     
+    trail <- reactive({
+        validate(need(track$trail, message = FALSE))
+        
+        track$trail
+    })
     
     
     #debounce trail to allow ui to update before doing more calculations
@@ -218,12 +228,12 @@ shinyServer(function(input, output, session) {
 
         query <- paste('SELECT *',
                        'FROM "SG_GEOLOGICAL_UNIT_250K"',
-                       'WHERE "geom" && ST_MakeEnvelope(',bb[1], ', ', bb[2], ', ', bb[3], ', ', bb[4],');'
+                       'WHERE "geometry" && ST_MakeEnvelope(',bb[1], ', ', bb[2], ', ', bb[3], ', ', bb[4],');'
         )
 
-        geo <-st_read(con, query = query, geometry_column = "geom")
+        geo <-st_read(con, query = query, geometry_column = "geometry")
 
-        geo <- st_transform(geo, st_crs(trail()))
+        #geo <- st_transform(geo, st_crs(trail()))
 
         geo
     })
@@ -235,12 +245,12 @@ shinyServer(function(input, output, session) {
 
         query <- paste('SELECT *',
                        'FROM "NV2005_EVCBCS"',
-                       'WHERE "geom" && ST_MakeEnvelope(',bb[1], ', ', bb[2], ', ', bb[3], ', ', bb[4],');'
+                       'WHERE "geometry" && ST_MakeEnvelope(',bb[1], ', ', bb[2], ', ', bb[3], ', ', bb[4],');'
         )
 
-        veg <-st_read(con, query = query, geometry_column = "geom")
+        veg <-st_read(con, query = query, geometry_column = "geometry")
 
-        veg <- st_transform(veg, st_crs(trail()))
+        #veg <- st_transform(veg, st_crs(trail()))
 
         veg
     })
@@ -352,6 +362,7 @@ shinyServer(function(input, output, session) {
            st_sf()
 
         leafletProxy("main_map", session) %>%
+            clearShapes() %>%
             fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
             addPolylines(data = t)
     }, priority = 1)
@@ -586,7 +597,7 @@ shinyServer(function(input, output, session) {
         gsf <- geo()
         
         
-        poly <- gsf[gsf$id %in% dat$id,]$geom
+        poly <- gsf[gsf$id %in% dat$id,]$geometry
         
         poly <- poly %>%
             st_cast(to = "POLYGON") %>%
@@ -621,7 +632,7 @@ shinyServer(function(input, output, session) {
         vsf <- veg()
         
         
-        poly <- vsf[vsf$id %in% dat$id,]$geom
+        poly <- vsf[vsf$id %in% dat$id,]$geometry
         
         poly <- poly %>%
             st_cast(to = "POLYGON") %>%
