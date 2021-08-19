@@ -29,13 +29,14 @@ shinyUI(
         #sidebarPanel(
             
             sidebarMenu(
+                menuItem("Current Location", tabName = "Location", icon = icon("compass"), selected = TRUE),
                 menuItem("File Upload", tabName = "Files", icon = icon("file-upload")),
                 menuItem("Geology", tabName = "Geology", icon = icon("globe-asia")),
                 menuItem("Vegetation", tabName = "Vegetation", icon = icon("tree")),
                 menuItem("Statistics",
-                         menuSubItem("Geology", tabName = "GeoStats"),
-                         menuSubItem("Vegetation", tabName = "VegStats"),
-                         tabName = "Statistics", icon = icon("chart-bar")
+                    menuSubItem("Geology", tabName = "GeoStats"),
+                    menuSubItem("Vegetation", tabName = "VegStats"),
+                    tabName = "Statistics", icon = icon("chart-bar")
                 ),
                 menuItem("About", tabName = "About", icon = icon("info-circle"))
                 
@@ -45,27 +46,54 @@ shinyUI(
         # Show a plot of the generated distribution
         #mainPanel(
         dashboardBody(
-            leafletOutput("main_map", height = 300),
-            column(width = 10, 
-               sliderInput("range", 
-                    label = "Range of interest:",
-                    min = 0, max = 100, value = c(0, 100), width= '100%'
-               ), 
-               offset = 1
-            ),
             tabItems(
-                tabItem(tabName = "Files", 
-                        column(5,
+                tabItem(tabName = "Location",
+                    leafletOutput("location_map", height = 400),
+                    tabsetPanel(
+                        tabPanel("Local Geology",
+                            uiOutput("local_geology"), 
+                            value = "geo"       
+                        ),
+                        tabPanel("Local Vegetation",
+                            uiOutput("local_vegetation"), 
+                            value = "veg"
+                        ),
+                        fluidRow(
+                            column(width = 6, numericInput("lng", label = "Longitude", value = 0, step = 0.1, width = 120)),
+                            column(width = 6, numericInput("lat", label = "Latitude", value = 0, step= 0.1, width = 120))
+                        ),
+                        id = "location"
+                    ), 
+                    actionButton("go", label = "Go"),
+                    actionButton("gps", label = "Current Location")
+                ),
+                tabItem(tabName = "Files",
+                    leafletOutput("file_map", height = 300),
+                    column(width = 10, 
+                        sliderInput("range", 
+                            label = "Range of interest:",
+                            min = 0, max = 100, value = c(0, 100), width= '100%'
+                        ),
+                       offset = 1
+                    ),
+                    column(5,
                         fileInput("gpx", "Upload gpx file", multiple = FALSE, accept = c(".gpx")),
                         withSpinner(uiOutput("info", inline = TRUE), size = 0.5, type = 8, proxy.height = 150),
                         radioButtons("x_axis", label = "x-axis", choiceNames = c("distance (m)", "time"), choiceValues = c('d', 't'), inline = TRUE),
                         textInput("name", "Save name", value = "", placeholder = "name"),
                         actionButton("save", "Save")),
                         column(5, selectizeInput("select", "load saved track", choices = NULL), actionButton("load", "Load")
-                            
-                        )
+                    )
                 ),
                 tabItem(tabName = "Geology",
+                    leafletOutput("geo_map", height = 300),
+                    column(width = 10, 
+                        sliderInput("range", 
+                            label = "Range of interest:",
+                            min = 0, max = 100, value = c(0, 100), width= '100%'
+                            ), 
+                        offset = 1
+                    ),
                     withSpinner(plotOutput("geoPlot", width='100%', brush = "plot_brush", dblclick = "geo_click"), type = 8),
                     tags$b("Double click plot for more details"), 
                     tags$br(),
@@ -73,6 +101,14 @@ shinyUI(
                     tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", "CCA-4.0", target = "_blank")
                 ),
                 tabItem(tabName = "Vegetation",
+                        leafletOutput("veg_map", height = 300),
+                        column(width = 10, 
+                               sliderInput("range", 
+                                           label = "Range of interest:",
+                                           min = 0, max = 100, value = c(0, 100), width= '100%'
+                               ), 
+                               offset = 1
+                        ),
                         withSpinner(plotOutput("vegPlot", width='100%', brush = "plot_brush", dblclick = "veg_click"), type = 8),
                         tags$b("Double click plot for more details"), 
                         tags$br(),

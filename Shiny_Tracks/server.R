@@ -6,7 +6,7 @@
 #
 #    http://shiny.rstudio.com/
 #
-
+library(dplyr)
 library(shiny)
 library(ggplot2)
 library(lwgeom)
@@ -19,6 +19,10 @@ library(zoo)
 library(DBI)
 library(config)
 library(RPostgres)
+library(leaflet.extras)
+library(htmlwidgets)
+library(htmltools)
+
 
 conn_args <- config::get("dataconnection")
 con <- dbConnect(RPostgres::Postgres(),
@@ -38,11 +42,31 @@ shinyServer(function(input, output, session) {
     #Main map initialise on Vic
     map <- leaflet() %>%
         addTiles() %>%
-        fitBounds(lng1 = 140.1, lng2 = 150.2, lat1 = -34.9, lat2 = -38.5)
+        fitBounds(lng1 = 140.1, lng2 = 150.2, lat1 = -34.9, lat2 = -38.5) %>%
+        addControlGPS(options = gpsOptions(position = "topleft", activate = TRUE, 
+                                                autoCenter = TRUE, maxZoom = 15, 
+                                                setView = TRUE)) %>%
+        activateGPS()
+    
+    
     
     #Map for pop up windows
     pop_map <- leaflet() %>% 
         addTiles()
+    
+    
+    observeEvent(input$location_map_center, { 
+        
+        updateNumericInput(session = session,
+                           inputId = "lat",
+                           value = round(input$location_map_center$lat, 3))
+        updateNumericInput(session = session,
+                          inputId = "lng",
+                          value = round(input$location_map_center$lng,3))
+    }, once = TRUE)
+        
+        
+    
     
     #Inputs work better as globals 
     x <- 0
@@ -52,28 +76,87 @@ shinyServer(function(input, output, session) {
     track <- reactiveValues()
     
     
-    query <- paste('SELECT ids, name FROM tracks')
+    
+    query <- paste('SELECT id, name FROM tracks')
     names <- dbGetQuery(con, query)
-    n <- names$ids
+    n <- names$id
     names(n)<-names$name
     updateSelectizeInput(session, "select", choices = n, selected = NULL)
+    
+    
+    # update Input with delay
+    # map_long <- eventReactive(input$location_map_center$lng, {
+    #     input$location_map_center$lng
+    # })%>% debounce(300)
+    # map_lat <- eventReactive(input$location_map_center$lat, {
+    #     input$location_map_center$lat
+    # })%>% debounce(300)
+    # 
+    # observe({
+    #     updateNumericInput(session = session,
+    #                            inputId = "lng",
+    #                            value = round(map_long(), 3))
+    #     updateNumericInput(session = session,
+    #                            inputId = "lat",
+    #                            value = round(map_lat(), 3))
+    # })
+    
+    
+    observeEvent(input$go, {
+        leafletProxy("location_map", session) %>%
+            flyTo(input$lng, input$lat, zoom = 12)
+    })
+    
+    
+    observeEvent(input$gps, {
+        leafletProxy("location_map", session) %>%
+            deactivateGPS()
+            
+        leafletProxy("location_map", session) %>%
+            activateGPS()
+        
+        updateNumericInput(session = session,
+                           inputId = "lng",
+                           value = round(input$location_map_center$lng, 3))
+        updateNumericInput(session = session,
+                           inputId = "lat",
+                           value = round(input$location_map_center$lat, 3))
+    })
+    
+    observeEvent(input$location, {
+        if(input$location == "geo") {
+            geom <- local_geo()$geometry 
+            cl <- "red" 
+        } else {
+            geom <- local_veg()$geometry
+            cl <- "green"
+        }
+        poly <- geom %>%
+            st_cast(to = "POLYGON") %>%
+            st_sf()
+        
+        leafletProxy("location_map", session) %>%
+            clearShapes() %>%
+            addPolygons(data = poly, color = cl)
+    })
     
     observeEvent(input$load, {
         validate(need(input$select, message = FALSE))
         
-        query <- paste("SELECT * FROM points WHERE track_fid =", input$select)
+        query <- paste('SELECT track_seg_point_id, track_fid, ele, dis, id, time, geology, vegetation, geometry',
+                        'FROM points WHERE track_fid =', input$select,
+                       'ORDER BY track_seg_point_id')
         t <- st_read(con, query = query, geometry_column = "geometry")
         
-        track$trail <- t
-        
-        
-        bb <- as.numeric(st_bbox(t))
-        
-        t <- t %>%
-            st_combine() %>%
-            st_cast(to = "LINESTRING") %>%
-            st_sf()
-        
+        track$track_fid <- t$track_fid[1]
+        track$track_seg_point_id <- t$track_seg_point_id
+        track$ele <- t$ele
+        track$dis <- t$dis
+        track$id <- t$id
+        track$time <- t$time
+        track$geology <- t$geology
+        track$vegetation <- t$vegetation
+        track$geometry <- t$geometry
         
         
         if(!all(is.na(t$time))) {
@@ -104,54 +187,92 @@ shinyServer(function(input, output, session) {
     # The selected file, if any
     userFile <- reactive({
         validate(need(input$gpx, message = FALSE))
-        
-        updateTextInput(session, "name", label = "Save name", value = input$gpx$name)
+
+        updateTextInput(session, "name", label = "Save name:", value = input$gpx$name)
         
         input$gpx
     })
     
     
     observeEvent(input$save, {
-        validate(need(trail(), message = "No file to uploaded"))
         validate(need(input$name, message = "track needs a name to save"))
         
-        t<-trail()
-        bb<-st_bbox(t)
+        start <-as.character(as.POSIXlt(track$time[1], tz= "Australia/Victoria", origin = origin))
+        end <- as.character(as.POSIXlt(track$time[length(track$time)], tz= "Australia/Victoria", origin = origin))
         
-        d<-data.frame(name = input$name, min.ele = min(t$ele), max.ele = max(t$ele), start = as.POSIXct(t$time[1], tz= "Australia/Victoria", origin = origin), end = as.POSIXct(t$time[nrow(t)], tz= "Australia/Victoria", origin = origin))
+        bb<-st_bbox(track$geometry)
+        
+        #db_track<-data.frame(name = input$name, min_ele = min(track$ele), max_ele = max(track$ele), start = as.POSIXct(track$time[1], tz= "Australia/Victoria", origin = origin), end = as.POSIXct(track$time[nrow(t)], tz= "Australia/Victoria", origin = origin))
         sfc <- st_sfc(st_point(c(bb[1],bb[2])),st_point(c(bb[3],bb[4])))
-        st_geometry(d)<-st_combine(sfc)
-        st_crs(d)<-crs
-        st_write(d, con, "tracks", append = TRUE)
+        geom <- st_combine(sfc)
+        st_crs(geom)<-crs
         
-        Sys.sleep(0.5)
+        q <- gsub("'  '", "NULL", gsub("NA", "",paste('INSERT INTO tracks("name", "min_ele", "max_ele", "start", "end", "geometry")',
+              'VALUES (', 
+              paste(paste("'",input$name,"'", sep=''), 
+                    min(track$ele, na.rm = TRUE), max(track$ele, na.rm = TRUE), 
+                    paste("'", start, "'", spe=''), 
+                    paste("'", end, "'", spe=''),  
+                    paste("'",st_astext(geom),"'",sep=''), sep = ', '),
+              '::geometry)', 
+              'RETURNING id;')))
         
-        query<- paste("SELECT ids FROM tracks WHERE name ='", input$name, "'", sep = "")
-        id <- dbGetQuery(con, query)
         
-        t$track_fid<-id[1,]
-        t$time<-as.POSIXct(t$time, tz= "Australia/Victoria", origin = origin)
+        id <- dbGetQuery(con, q)
         
-        st_write(t, con, layer = "points", append = TRUE)
         
-        query <- paste('SELECT ids, name FROM tracks')
+        track$track_fid<-id[1,]
+        #time<-as.POSIXct(track$time, tz= "Australia/Victoria", origin = origin)
+        
+        n <- length(track$track_seg_point_id)
+        
+        db_points <- data.frame(track_seg_point_id = track$track_seg_point_id, 
+                                ele = track$ele,
+                                dis = track$dis,
+                                track_fid = rep(id[1,], n),
+                                time = as.POSIXct(track$time, tz = "Australia/Victoria", origin = origin)
+                                )
+        
+        
+        # if(is.na(track$time))
+        #     db_points$time <- rep(NA,n)
+        # else
+        #     db_points$time <- track$time
+        
+        if(is.na(track$geology))
+            db_points$geology <- rep(NA, n)
+        else
+            db_points$geology <- track$geology
+        
+        if(is.na(track$vegetation))
+            db_points$vegetation <- rep(NA,n)
+        else
+            db_points$vegetation <- track$vegetation
+        
+        st_geometry(db_points) <- track$geometry
+        
+        
+        st_write(db_points, con, layer = "points", append = TRUE)
+        
+        query <- paste('SELECT id, name FROM tracks;')
         names <- dbGetQuery(con, query)
-        n <- names$ids
+        n <- names$id
         names(n)<-names$name
-        updateSelectizeInput(session, "select", choices = n, selected = id[1,])
+        updateSelectizeInput(session, "select", choices = n, selected = id)
     })
     
     #Load gpx file and calculate the cumulative distance
     observe({
         validate(need(userFile(), message = FALSE))
+        u <- userFile()
 
         trail <- data.frame()
-        trail <- sf::st_read(userFile()$datapath, layer = "track_points", quiet = TRUE)
+        trail <- sf::st_read(u$datapath, layer = "track_points", quiet = TRUE)
         
         trail<-st_transform(trail, crs)
 
         d<-sf::st_distance(trail)
-        trail$Dis <- as.numeric(cumsum(d[1,]))/1000
+        trail$dis <- as.numeric(cumsum(d[1,]))/1000
         if(!all(is.na(trail$time))) {
             trail$time <- na.approx(as.numeric(trail$time))
             updateRadioButtons(
@@ -173,36 +294,61 @@ shinyServer(function(input, output, session) {
                 inline = TRUE
             )
         }
-        track$trail<-trail
-    })
-    
-    trail <- reactive({
-        validate(need(track$trail, message = FALSE))
         
-        track$trail
+        track$track_fid <- NA
+        track$track_seg_point_id <- trail$track_seg_point_id
+        track$ele <- trail$ele
+        track$dis <- trail$dis
+        track$id <- NA
+        track$time <- trail$time
+        track$geology <- NA
+        track$vegetation <- NA
+        track$geometry <- trail$geometry
     })
     
+    #When the geometry changes update the map
+    observe({
+        validate(need(track$geometry, message = FALSE))
+        
+        bb <- as.numeric(st_bbox(track$geometry))
+        
+        t <- track$geometry %>%
+            st_combine() %>%
+            st_cast(to = "LINESTRING") %>%
+            st_sf()
+
+        leafletProxy("file_map", session) %>%
+            clearShapes() %>%
+            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
+            addPolylines(data = t)
+        
+        leafletProxy("geo_map", session) %>%
+            clearShapes() %>%
+            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
+            addPolylines(data = t)
+        
+        leafletProxy("veg_map", session) %>%
+            clearShapes() %>%
+            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
+            addPolylines(data = t)
+    }, priority = 1)
     
-    #debounce trail to allow ui to update before doing more calculations
-    trail_d <- debounce(trail, 500)
     
     start <- reactive({
-        validate(need(trail(), message = FALSE))
-        t<-trail()$time
+        
+        t<-track$time
         if(all(is.na(t)))
         {
-            start <- "time missing from gpx file"
+            start <- "Time missing from file"
         } else {
             start <- as.character(as.POSIXct(min(t, na.rm = TRUE), origin = origin))
         }
         start
     })
     
-    
-    
     end <- reactive({
-        validate(need(trail(), message = FALSE))
-        t<-trail()$time
+        
+        t<-track$time
         if(all(is.na(t)))
         {
             end <- " "
@@ -215,16 +361,17 @@ shinyServer(function(input, output, session) {
     
     
     total_distance <- reactive({
-        validate(need(trail(), message = FALSE))
-        t<-trail()
+        validate(need(track$dis, message = FALSE))
 
-        t$Dis[nrow(t)]
+        track$dis[length(track$dis)]
     })
     
     
     
-    geo <- reactive({
-        bb <- st_bbox(trail_d())
+    geo_box <- reactive({
+        validate(need(track$geometry, message = FALSE))
+        
+        bb <- st_bbox(track$geometry)
 
         query <- paste('SELECT *',
                        'FROM "SG_GEOLOGICAL_UNIT_250K"',
@@ -233,15 +380,15 @@ shinyServer(function(input, output, session) {
 
         geo <-st_read(con, query = query, geometry_column = "geometry")
 
-        #geo <- st_transform(geo, st_crs(trail()))
-
         geo
     })
     
     
     
-    veg <- reactive({
-        bb <- st_bbox(trail_d())
+    veg_box <- reactive({
+        validate(need(track$geometry, message = FALSE))
+        
+        bb <- st_bbox(track$geometry)
 
         query <- paste('SELECT *',
                        'FROM "NV2005_EVCBCS"',
@@ -250,74 +397,162 @@ shinyServer(function(input, output, session) {
 
         veg <-st_read(con, query = query, geometry_column = "geometry")
 
-        #veg <- st_transform(veg, st_crs(trail()))
-
         veg
     })
     
     
    
     #Find the polygons that the gpx file pass through and group them into blocks
-    trail_geo <- reactive({
-        validate(need(trail <- trail_d(), message = FALSE))
-        validate(need(gsf <- geo(), message = FALSE))
-
-        suppressMessages(trail<-sf::st_join(trail, gsf, join = st_nearest_feature))
-
-        trail$GEO_GRP<-1
-
-        d<-trail[1,]$id
-        grp<-1
-        for(i in 1:nrow(trail)-1){
-            if(!(d %in% trail[i+1,]$id)) {
-                grp<-grp+1
-                d<-trail[i+1,]$id
+    geo_track <- reactive({
+        if(all(is.na(track$geology))){
+            if(is.na(track$track_fid)){
+                n <- length(track$track_seg_point_id)
+                
+                db_points <- data.frame(track_seg_point_id = track$track_seg_point_id, 
+                                        ele = track$ele,
+                                        dis = track$dis,
+                                        time = as.POSIXct(track$time, tz = "Australia/Victoria", origin = origin)
+                )
+                
+                st_geometry(db_points) <- track$geometry
+                st_write(db_points, con, "#temptrack")
+                
+                q <- paste('INSERT INTO "#temptrack" AS geology',
+                           'SELECT id',
+                           'FROM "SG_GEOLOGICAL_UNIT_250K" AS ge',
+                           'WHERE ST_Intersects(#temptrack.geometry::geometry, ge.geometry);')
+                dbSendQuery(con, q)
+                
+                q <- paste('SELECT geology',
+                           'FROM "#temptrack"',
+                           'WHERE track_fid =', track$track_fid,';')
+                
+                tid <- dbGetQuery(con, q)
+                
+                track$geology <- tid
+            } else {
+                #If saved but unlinked Link points to polygons in database
+                q <- paste('UPDATE points',
+                           'SET geology = ge.id',
+                           'FROM "SG_GEOLOGICAL_UNIT_250K" AS ge',
+                           'WHERE points.track_fid =', track$track_fid,
+                           'AND ST_Intersects(points.geometry::geometry, ge.geometry);')
+                
+                dbSendQuery(con, q)
+                
+                q <- paste('SELECT geology',
+                           'FROM points',
+                           'WHERE track_fid =', track$track_fid,';')
+                
+                tid <- dbGetQuery(con, q)
+                
+                track$geology <- tid
             }
-            trail[i+1,]$GEO_GRP<-grp
         }
+        
+        q<-paste('SELECT g.id, g.name, g.desc, g.lithology, g.rank, g.geolut_uri, g.repage_uri, g.replit_uri, g.geometry',
+                 'FROM "SG_GEOLOGICAL_UNIT_250K" AS g',
+                 'WHERE id IN (', paste(na.omit(unique(track$geology)), collapse = ', '), ');')
+        
+        geo <- dbGetQuery(con,q)
+    
+        geology_data <- left_join(data.frame(geology = track$geology), geo, by = c("geology" = "id"))
+        
+        n <- nrow(geology_data)
+        geology_data$grp <- 1
 
-        trail
+        d<-geology_data$name[1]
+        grp<-1
+        for(i in 1:(n-1)){
+            if(!(d %in% geology_data$name[i+1])) {
+                grp <- grp+1
+                d <- geology_data$name[i+1]
+            }
+            geology_data$grp[i+1] <- grp
+        }
+        
+        geology_data$dis <- track$dis
+        geology_data$ele <- track$ele
+        geology_data$name <- as.factor(geology_data$name) 
+        
+        geology_data
+    })
+    
+    geo_cl <- reactive({
+        validate(need(geo_track(), message = FALSE))
+        
+        g <- geo_track()
+        
+        v <- viridis(length(levels(g$name)), option = "turbo")
+        names(v) <- levels(g$name)
+        
+        v
     })
     
     
     
     #Find the polygons that the gpx file pass through and group them into blocks
-    trail_veg <- reactive({
-        validate(need(trail <- trail_d(), message = FALSE))
-        validate(need(vsf <- veg(), message = FALSE))
-
-        suppressMessages(trail<-sf::st_join(trail, vsf, join = st_nearest_feature))
-
-        trail$VEG_GRP<-1
-
-        d<-trail[1,]$id
-        grp<-1
-        for(i in 1:nrow(trail)-1){
-            if(!(d %in% trail[i+1,]$id)) {
-                grp<-grp+1
-                d<-trail[i+1,]$id
+    veg_track <- reactive({
+        
+        if(all(is.na(track$vegetation))){
+            if(is.na(track$track_fid)){
+                vegetation <- st_intersects(track$vegetation, vsf, sparse = TRUE)
+                
+                track$vegetation <- vegetation
+            } else {
+                # Link points to polygons in database
+                q <- paste('UPDATE points',
+                           'SET vegetation = ve.id',
+                           'FROM "NV2005_EVCBCS" AS ve',
+                           'WHERE points.track_fid =', track$track_fid,
+                           'AND ST_Intersects(points.geometry::geometry, ve.geometry);')
+                dbSendQuery(con, q)
+                
+                q <- paste('SELECT vegetation',
+                           'FROM points',
+                           'WHERE track_fid =', track$track_fid,';')
+                
+                tid <- dbGetQuery(con, q)
+                
+                track$vegetation <- tid
             }
-            trail[i+1,]$VEG_GRP<-grp
         }
 
-        trail
+        q<-paste('SELECT v.id, v.x_evcname, v.xgroupname, v.xsubggroup, v.evcbcsdesc, v.bioregion, v.veg_code, v.geometry',
+                 'FROM "NV2005_EVCBCS" AS v',
+                 'WHERE id IN (', paste(na.omit(unique(track$vegetation)), collapse = ', '), ');')
+        
+        veg <- dbGetQuery(con,q)
+        
+        vegetation_data <- left_join(data.frame(vegetation = track$vegetation), veg, by = c("vegetation" = "id"))
+        
+        n <- nrow(vegetation_data)
+        vegetation_data$grp <- 1
+        
+        d<-vegetation_data$vegetation[1]
+        grp<-1
+        for(i in 1:n-1){
+            if(!(d %in% track$vegetation[i+1])) {
+                grp<-grp+1
+                d<-track$vegetation[i+1]
+            }
+            vegetation_data$grp[i+1] <- grp
+        }
+        
+        vegetation_data$dis <- track$dis
+        vegetation_data$ele <- track$ele
+        vegetation_data$x_evcname <- as.factor(vegetation_data$x_evcname) 
+
+        vegetation_data
     })
     
     
     
-    geo_cl <- reactive({
-        validate(need(trail_geo(), message = FALSE))
-        t <- trail_geo()
-        
-        v <- viridis(length(unique(t$name.y)), option = "turbo")
-        names(v) <- unique(t$name.y)
-        
-        v
-    })
+    
     
     veg_cl <- reactive({
-        validate(need(trail_veg(), message = FALSE))
-        t <- trail_veg()
+        validate(need(veg_track(), message = FALSE))
+        t <- veg_track()
         
         v <- viridis(length(unique(t$x_evcname)), option = "turbo")
         names(v) <- unique(t$x_evcname)
@@ -329,16 +564,14 @@ shinyServer(function(input, output, session) {
     observeEvent(input$x_axis,{
         x_axis <<- input$x_axis
 
-        t <- trail()
-
         if(x_axis == 'd') {
-            d <- t$Dis
+            d <- track$dis
             xmin <<- 0
             xmax <<- ceiling(max(d))
             updateSliderInput(session, "range", value = c(xmin, xmax), min = 0, max = xmax)
         } else {
-            xmin <<- min(t$time, na.rm = TRUE)
-            xmax <<- max(t$time, na.rm = TRUE)
+            xmin <<- min(track$time, na.rm = TRUE)
+            xmax <<- max(track$time, na.rm = TRUE)
             updateSliderInput(session,
                               "range",
                               value = as.POSIXct(c(xmin, xmax), origin = origin),
@@ -347,25 +580,6 @@ shinyServer(function(input, output, session) {
         }
 
     })
-    
-    
-    
-
-    #When the gpx file is loaded update the map
-    observe({
-       t <- trail()
-       bb <- as.numeric(st_bbox(t))
-
-       t <- t %>%
-           st_combine() %>%
-           st_cast(to = "LINESTRING") %>%
-           st_sf()
-
-        leafletProxy("main_map", session) %>%
-            clearShapes() %>%
-            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
-            addPolylines(data = t)
-    }, priority = 1)
     
     
     
@@ -387,16 +601,16 @@ shinyServer(function(input, output, session) {
     
     # Update the the slider to match the input file and x-axis selection
     observe({
-        t <- trail()
+        validate(need(track$dis, message = FALSE))
 
         if(x_axis == 'd') {
-            d <- t$Dis
+            d <- track$dis
             xmin <<- 0
             xmax <<- ceiling(max(d))
             updateSliderInput(session, "range", value = c(xmin, xmax), min = 0, max = xmax)
         } else {
-            xmin <<- min(t$time, na.rm = TRUE)
-            xmax <<- max(t$time, na.rm = TRUE)
+            xmin <<- min(track$time, na.rm = TRUE)
+            xmax <<- max(track$time, na.rm = TRUE)
             updateSliderInput(session,
                               "range",
                               value = as.POSIXct(c(xmin, xmax), origin = origin),
@@ -411,16 +625,15 @@ shinyServer(function(input, output, session) {
     #Zoom in when plot is brushed 
     observeEvent(input$plot_brush,{
         val<-input$plot_brush
-        t<-trail_d()
-
+        
         if(x_axis == 'd') {
             xmin <<- max(val$xmin, 0)
-            xmax <<- min(val$xmax, max(t$Dis))
+            xmax <<- min(val$xmax, max(track$dis))
             updateSliderInput(session, "range",  value = c(xmin,xmax))
         } else {
             r <- range(t$time, na.rm = TRUE)
-            xmin <<- max(as.numeric(val$xmin), min(t$time, na.rm = TRUE))
-            xmax <<- min(as.numeric(val$xmax), max(t$time, na.rm = TRUE))
+            xmin <<- max(as.numeric(val$xmin), min(track$time, na.rm = TRUE))
+            xmax <<- min(as.numeric(val$xmax), max(track$time, na.rm = TRUE))
             updateSliderInput(session, "range", value = as.POSIXct(c(xmin, xmax), origin = origin))
         }
     })
@@ -430,27 +643,36 @@ shinyServer(function(input, output, session) {
 
     #Update the plot when the selected range changes
     observeEvent(input$range, {
-        validate(need(trail <- trail(), message = FALSE),need(input$range, message = FALSE))
-        t <- trail()
-
+        validate(need(input$range, message = FALSE), need(track$geometry, message = FALSE))
+        
         if(x_axis == 'd'){
             xmin <<- max(input$range[1], 0)
-            xmax <<- min(input$range[2], max(t$Dis))
+            xmax <<- min(input$range[2], max(track$dis))
 
-            start <- st_coordinates(t[t$Dis >= xmin,][1,])
-            end <- st_coordinates(t[t$Dis >= xmax,][1,])
+            start <- st_coordinates(track$geometry[track$dis >= xmin][1])
+            end <- st_coordinates(track$geometry[track$dis >= xmax][1])
         } else {
 
-            xmin <<- max(as.numeric(input$range[1]), min(t$time, na.rm = TRUE))
-            xmax <<- min(as.numeric(input$range[2]), max(t$time, na.rm = TRUE))
+            xmin <<- max(as.numeric(input$range[1]), min(track$time, na.rm = TRUE))
+            xmax <<- min(as.numeric(input$range[2]), max(track$time, na.rm = TRUE))
 
-            start <- st_coordinates(t[t$time >= xmin,][1,])
-            end <- st_coordinates(t[t$time >= xmax,][1,])
+            start <- st_coordinates(track$geometry[track$time >= xmin][1])
+            end <- st_coordinates(track$geometry[track$time >= xmax][1])
         }
 
 
         # Also show the start and end points on map
-        leafletProxy("main_map", session) %>%
+        leafletProxy("file_map", session) %>%
+            clearMarkers() %>%
+            addCircleMarkers(lng = start[1], lat = start[2], color = "green", fillOpacity = 0.5) %>%
+            addCircleMarkers(lng = end[1], lat = end[2], color = "red", fillOpacity = 0.5)
+        
+        leafletProxy("geo_map", session) %>%
+            clearMarkers() %>%
+            addCircleMarkers(lng = start[1], lat = start[2], color = "green", fillOpacity = 0.5) %>%
+            addCircleMarkers(lng = end[1], lat = end[2], color = "red", fillOpacity = 0.5)
+        
+        leafletProxy("veg_map", session) %>%
             clearMarkers() %>%
             addCircleMarkers(lng = start[1], lat = start[2], color = "green", fillOpacity = 0.5) %>%
             addCircleMarkers(lng = end[1], lat = end[2], color = "red", fillOpacity = 0.5)
@@ -460,25 +682,28 @@ shinyServer(function(input, output, session) {
     
     # Render the geo plot
     output$geoPlot <- renderPlot({
-        validate(need(trail_geo(), message = FALSE))
+        validate(need(geo_track(), message = FALSE))
         validate(need(input$range, message = FALSE))
         
         session$resetBrush("plot_brush")
         
-        t <- trail_geo()
+        t <- geo_track()
         
+        
+
         if(x_axis == 'd') {
-            gg <- ggplot(data = t, aes(fill = name.y, group = GEO_GRP)) + 
-                geom_ribbon(aes(x=Dis, ymin=-10, ymax=ele)) + 
+           gg <- ggplot(data = t, aes(group = grp, fill = name)) + 
+                geom_ribbon(aes(x=dis, ymax = ele, ymin =-10)) + 
+                #geom_line(aes(y=ele, color = factor(name), width)) +
                 theme(legend.position="bottom", legend.direction = "horizontal") + 
                 labs(x ="Distance (m)", y = "Elevation (m)") +
                 xlim(xmin, xmax) + 
                 scale_fill_manual(values = geo_cl(), name = "") + 
                 guides(color=guide_legend(nrow = 3))
         } else {
-            geo <- t[!is.na(t$time),]
-            gg <- ggplot(data = t, aes(fill = name.y, group = GEO_GRP)) + 
-                geom_ribbon(aes(x = as.POSIXct(time, origin = origin, tz = "Australia/Victoria"), ymin=-10, ymax=ele)) + 
+            
+            gg <- ggplot(data = t, aes(fill = name, group = grp)) + 
+                geom_ribbon(aes(x = as.POSIXct(time, origin = origin, tz = "Australia/Victoria"), ymin = -10, ymax = ele)) + 
                 theme(legend.position="bottom", legend.direction = "horizontal") + 
                 labs(x ="Time", y = "Elevation (m)") +
                 xlim(as.POSIXct(xmin, origin = origin, tz = "Australia/Victoria"), as.POSIXct(xmax, origin = origin, tz = "Australia/Victoria"))  + 
@@ -489,16 +714,16 @@ shinyServer(function(input, output, session) {
     })
     
     output$vegPlot <- renderPlot({
-        validate(need(trail_veg(), message = FALSE))
+        validate(need(veg_track(), message = FALSE))
         validate(need(input$range, message = FALSE))
         
         session$resetBrush("plot_brush")
         
-        t <- trail_veg()
+        t <- veg_track()
         
         if(x_axis == 'd') {
-            gg <- ggplot(data = t, aes(fill = x_evcname, group = VEG_GRP)) + 
-                geom_ribbon(aes(x=Dis, ymin=-10, ymax=ele)) + 
+            gg <- ggplot(data = t, aes(fill = x_evcname, group = grp)) + 
+                geom_ribbon(aes(x = dis, ymin=-10, ymax=ele)) + 
                 theme(legend.position="bottom", legend.direction = "horizontal") + 
                 labs(x ="Distance (m)", y = "Elevation (m)") +
                 xlim(xmin, xmax) + 
@@ -506,7 +731,7 @@ shinyServer(function(input, output, session) {
                 guides(color=guide_legend(nrow = 3))
         } else {
             geo <- t[!is.na(t$time),]
-            gg <- ggplot(data = t, aes(fill = x_evcname, group = VEG_GRP)) + 
+            gg <- ggplot(data = t, aes(fill = x_evcname, group = grp)) + 
                 geom_ribbon(aes(x = as.POSIXct(time, origin = origin, tz = "Australia/Victoria"), ymin=-10, ymax=ele)) + 
                 theme(legend.position="bottom", legend.direction = "horizontal") + 
                 labs(x ="Time", y = "Elevation (m)" , name = "") +
@@ -519,24 +744,24 @@ shinyServer(function(input, output, session) {
     
     # Pop window
     geoModal <- function() {
-        t <- trail_geo()
+        t <- geo_track()
 
         if(x_axis == 'd'){
-            dat <- t[t$Dis>=x,][1,]
+            dat <- t[track$dis>=x,][1,]
         } else {
-            dat <- t[t$time>=x,][1,]
+            dat <- t[track$time>=x,][1,]
         }
         
         
-        leaf_out <- leafletOutput("geo_map")
+        leaf_out <- leafletOutput("geo_pop_map")
         
         if(!is.null(leaf_out)){
             modalDialog(
-                tags$div(tags$b("Name: "), dat$name.y, tags$br(), 
+                tags$div(tags$b("Name: "), dat$name, tags$br(), 
                          tags$b("Type: "), dat$geolut, tags$br(),
                          tags$b("Rank: "), dat$rank, tags$br(),
                          tags$b("Lithology: "), dat$lithology, tags$br(), 
-                         tags$b("Description: "), dat$desc.y, tags$br(), 
+                         tags$b("Description: "), dat$desc, tags$br(), 
                          tags$b("History: "), dat$geolhist),
                 leaf_out,
                 
@@ -550,7 +775,7 @@ shinyServer(function(input, output, session) {
     
     # Pop window
     vegModal <- function() {
-        t <- trail_veg()
+        t <- veg_track()
 
         if(x_axis == 'd'){
             dat <- t[t$Dis>=x,][1,]
@@ -559,7 +784,7 @@ shinyServer(function(input, output, session) {
         }
         
         
-        leaf_out <- leafletOutput("veg_map")
+        leaf_out <- leafletOutput("veg_pop_map")
         
         if(!is.null(leaf_out)){
             modalDialog(
@@ -575,19 +800,24 @@ shinyServer(function(input, output, session) {
     }
     
     
-    output$geo_map <- renderLeaflet({
+    output$geo_pop_map <- renderLeaflet({
         c <- input$geo_click
         
-        t <- trail_geo()
+        
+        t <- geo_track()
         
         if(x_axis == 'd'){
-            dat <- t[t$Dis>=x,][1,]
+            dat <- t[track$dis>=x,][1,]
         } else {
             dat <- t[t$time>=x,][1,]
         }
         
-        dat <- t[t$GEO_GRP==dat$GEO_GRP,]
-        bb <- as.numeric(st_bbox(dat))
+        dat <- t[t$grp==dat$grp,]
+        
+        
+        dat$id
+        geom <- track$geometry[]
+        bb <- as.numeric(st_bbox(geom))
         
         line <- dat %>% 
             sf::st_combine() %>%
@@ -610,7 +840,7 @@ shinyServer(function(input, output, session) {
             addPolylines(data = line)  
     })
     
-    output$veg_map <- renderLeaflet({
+    output$veg_pop_map <- renderLeaflet({
         c <- input$veg_click
         
         t <- trail_veg()
@@ -653,18 +883,19 @@ shinyServer(function(input, output, session) {
                  tags$b("Total distance: "), round(total_distance()), "m")
     })
     
-    output$main_map <- renderLeaflet(map)
+    output$location_map <- output$file_map <- output$geo_map <- output$veg_map <- renderLeaflet(map)
     
     output$geoStats <- renderPlot({
-        validate(need(t <- trail_geo(), message = FALSE), need(r <- input$range, message = FALSE))
+        validate(need(t <- geo_track(), message = FALSE), need(r <- input$range, message = FALSE))
+        
         
         if(x_axis == 'd'){
             dat <- t[t$Dis>=xmin,]
-            dat <- dat[dat$Dis<=xmax,]
+            dat <- dat[dat$dis<=xmax,]
         } else {
             dat <- t[t$time>=xmin,]
             dat <- dat[dat$time<=xmax,]
-        } 
+        }
         
         #g <- max(t$GEO_GRP)
         
@@ -679,7 +910,7 @@ shinyServer(function(input, output, session) {
         #     c[d[1,]$name.y] = c[d[1,]$name.y] + 1
         # }
         
-        ggplot(dat, aes(x=name.y, fill = name.y)) + 
+        ggplot(dat, aes(x=name, fill = name)) + 
             geom_bar(stat="count") + 
             theme(axis.text.x = element_text(angle = 90), legend.position="none") +
             xlab(element_blank()) +
@@ -687,7 +918,7 @@ shinyServer(function(input, output, session) {
     })
         
     output$vegStats <- renderPlot({
-        validate(need(t <- trail_veg(), message = FALSE), need(r <- input$range, message = FALSE))
+        validate(need(t <- veg_track(), message = FALSE), need(r <- input$range, message = FALSE))
         
         
         if(x_axis == 'd'){
@@ -715,6 +946,77 @@ shinyServer(function(input, output, session) {
             theme(axis.text.x = element_text(angle = 90), legend.position="none") +
             xlab(element_blank()) +
             scale_fill_manual(values = veg_cl())
+    })
+    
+    local_geo <- reactive({
+        q <- paste('SELECT *',
+                   'FROM "SG_GEOLOGICAL_UNIT_250K" AS ge',
+                   "WHERE ST_INTERSECTS(ge.geometry, 'SRID=7844;POINT(", input$lng, input$lat, ")'::geometry)"
+        )
+        
+        st_read(con, query = q)
+     })
+    
+    local_veg <- reactive({
+        q <- paste('SELECT *',
+                   'FROM "NV2005_EVCBCS" AS ve',
+                   "WHERE ST_INTERSECTS(ve.geometry, 'SRID=7844;POINT(", input$lng, input$lat, ")'::geometry)"
+        )
+        
+        veg <- st_read(con, query = q)
+    })
+    
+    output$local_geology <- renderUI({
+        g <- local_geo()
+        
+        tags$div(tags$b("Name: "), g$name, tags$br(),
+                    tags$b("Description: "), g$desc, tags$br(),
+                    tags$b("Formation: "), g$geolut,tags$br(),
+                    tags$b("Lithology: "), g$lithology,tags$br(),
+                    tags$b("History: "), g$geolhist,tags$br()
+                           
+        )
+    })
+    
+    output$local_vegetation <- renderUI({
+        v <- local_veg()
+        
+        tags$div(tags$b("Name: "), v$x_evcname, tags$br(), 
+                 tags$b("Subgroup: "), v$xsubggroup, tags$br(),
+                 tags$b("Group: "), v$xgroupname, tags$br(),
+                 tags$b("Bioregion: "), v$bioregion, tags$br(), 
+                 tags$b("Status: "), v$evcbcsdesc)
+                 
+        
+    })
+    
+    observeEvent(input$location_map_click,{
+        updateNumericInput(session = session,
+                           inputId = "lng",
+                           value = round(input$location_map_click$lng, 3))
+        updateNumericInput(session = session,
+                           inputId = "lat",
+                           value = round(input$location_map_click$lat, 3))
+        
+        
+    })
+    
+    observeEvent(input$lng | input$lat, {
+        if(input$location == "geo") {
+            geom <- local_geo()$geometry 
+            cl <- "red" 
+        } else {
+            geom <- local_veg()$geometry
+            cl <- "green"
+        }
+        poly <- geom %>%
+            st_cast(to = "POLYGON") %>%
+            st_sf()
+        
+        leafletProxy("location_map", session) %>%
+            clearShapes() %>%
+            addPolygons(data = poly, color = cl)
+        
     })
     
 })
