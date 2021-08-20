@@ -2,7 +2,7 @@
 .Rhistory
 .Rapp.history
 
-#Database authentication
+#Database authenticatio
 *.yml
 
 # Session Data files
@@ -37,3 +37,4 @@ vignettes/*.pdf
 
 # Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
 rsconnect/
+Shiny_Tracks/config.yml
