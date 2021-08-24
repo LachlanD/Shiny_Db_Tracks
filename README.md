@@ -1,5 +1,5 @@
 # [Victoria Shiny Tracks](https://lachland.shinyapps.io/Shiny_Tracks/)
-[Victoria Shiny Tracks](https://lachland.shinyapps.io/Shiny_Tracks/)
+[https://lachland.shinyapps.io/Shiny_Tracks/](https://lachland.shinyapps.io/Shiny_Tracks/)
 
 Website shows the geology and native vegetation of Victoria. 
 ### Current Location
