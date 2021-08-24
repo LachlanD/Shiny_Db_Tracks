@@ -34,4 +34,4 @@ The search function allows searching the text fields of the database and display
 ### Code
 Written in R using the shiny web development framework hosted on shinyapps.io and postgreSQL/postGIS hosted on AWS.
 
-[Victoria Shiny Tracks](https://lachland.shinyapps.io/Shiny_Tracks/)
+[https://lachland.shinyapps.io/Shiny_Tracks/](https://lachland.shinyapps.io/Shiny_Tracks/)
