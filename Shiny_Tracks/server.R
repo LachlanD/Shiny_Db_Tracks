@@ -194,7 +194,6 @@ shinyServer(function(input, output, session) {
         
         bb<-st_bbox(track$geometry)
         
-        #db_track<-data.frame(name = input$name, min_ele = min(track$ele), max_ele = max(track$ele), start = as.POSIXct(track$time[1], tz= "Australia/Victoria", origin = origin), end = as.POSIXct(track$time[nrow(t)], tz= "Australia/Victoria", origin = origin))
         sfc <- st_sfc(st_point(c(bb[1],bb[2])),st_point(c(bb[3],bb[4])))
         geom <- st_combine(sfc)
         st_crs(geom)<-crs
@@ -985,7 +984,6 @@ shinyServer(function(input, output, session) {
         pop_map %>%
             clearShapes() %>%
             fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
-            #addPolygons(data = poly, fillColor = as.character(geo_cl()[dat$name.y[1]]), fillOpacity =  0.3, stroke = FALSE) %>%
             addPolylines(data = line)  
     })
     
@@ -1023,7 +1021,6 @@ shinyServer(function(input, output, session) {
         pop_map %>%
             clearShapes() %>%
             fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
-            #addPolygons(data = poly, fillColor = as.character(veg_cl()[dat$x_evcname[1]]), fillOpacity =  0.3, stroke = FALSE) %>%
             addPolylines(data = line)  
     })
     
