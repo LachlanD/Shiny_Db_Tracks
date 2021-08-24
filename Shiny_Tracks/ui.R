@@ -191,7 +191,7 @@ shinyUI(
                     column(width = 8,
                         "Author: Lachlan Dryburgh 2021 ", 
                         tags$a(href= "lachlan.d@gmail.com", "lachlan.d@gmail.com", target = "_blank"), tags$br(), tags$br(),
-                        "Written in R using the shiny web development framework, features leaflet maps, ggplot2, Simple Features packages.", tags$br(), tags$br(),
+                        "Written in R using the shiny web development framework, features leaflet maps, ggplot2, Simple Features, DataTables packages.", tags$br(), tags$br(),
                         "Data provided by open data vic under creative commons attribution international 4.0 ", 
                         tags$a(href="https://creativecommons.org/licenses/by/4.0/legalcode", 
                                "CCA-4.0", 
