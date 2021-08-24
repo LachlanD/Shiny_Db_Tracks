@@ -1,11 +1,10 @@
-#
 # This is the server logic of a Shiny web application. You can run the
 # application by clicking 'Run App' above.
 #
 # Find out more about building applications with Shiny here:
 #
 #    http://shiny.rstudio.com/
-#
+
 library(dplyr)
 library(shiny)
 library(ggplot2)
@@ -24,7 +23,7 @@ library(htmltools)
 library(shinyWidgets)
 library(DT)
 
-
+# Connect to the postGIS database using the config.yml file
 conn_args <- config::get("dataconnection")
 con <- dbConnect(RPostgres::Postgres(),
                  host = conn_args$server,
@@ -34,12 +33,14 @@ con <- dbConnect(RPostgres::Postgres(),
                  password = conn_args$pwd,
                  bigint = "integer")
 
+
 #Set system variable
 sf_use_s2(FALSE)
 origin <- "1970-01-01" #R Epoch
 crs <- st_crs(7844) #Coordinate reference system used in my db
 
 shinyServer(function(input, output, session) {
+    
     #Main map initialise on Vic
     map <- leaflet() %>%
         addTiles() %>%
@@ -55,24 +56,9 @@ shinyServer(function(input, output, session) {
         fitBounds(lng1 = 140.1, lng2 = 150.2, lat1 = -34.9, lat2 = -38.5)
     
 
-    output$location_map <- renderLeaflet(map)
-    output$file_map  <- renderLeaflet(map2)
-    output$results_map <- renderLeaflet(map2)
-    
-
     #Map for pop up windows
     pop_map <- leaflet() %>% 
         addTiles()
-    
-    # Start at current location
-    observeEvent(input$location_map_center, { 
-        updateNumericInput(session = session,
-                           inputId = "lat",
-                           value = round(input$location_map_center$lat, 3))
-        updateNumericInput(session = session,
-                          inputId = "lng",
-                          value = round(input$location_map_center$lng,3))
-    }, once = TRUE)
         
     
     #Inputs work better as globals 
@@ -89,6 +75,20 @@ shinyServer(function(input, output, session) {
     names(n)<-names$name
     
     updateSelectizeInput(session, "select", choices = n, selected = NULL)
+    
+    output$location_map <- renderLeaflet(map)
+    output$file_map  <- renderLeaflet(map2)
+    output$results_map <- renderLeaflet(map2)
+    
+    # Start at current location
+    observeEvent(input$location_map_center, { 
+        updateNumericInput(session = session,
+                           inputId = "lat",
+                           value = round(input$location_map_center$lat, 3))
+        updateNumericInput(session = session,
+                           inputId = "lng",
+                           value = round(input$location_map_center$lng,3))
+    }, once = TRUE)
     
     
     observeEvent(input$go, {
@@ -114,6 +114,7 @@ shinyServer(function(input, output, session) {
                            value = round(input$location_map_center$lat, 3))
     })
     
+    
     observeEvent(input$location, {
         if(input$location == "geo") {
             geom <- local_geo()$geometry 
@@ -130,6 +131,7 @@ shinyServer(function(input, output, session) {
             clearShapes() %>%
             addPolygons(data = poly, color = cl)
     })
+    
     
     observeEvent(input$load, {
         validate(need(input$select, message = FALSE))
@@ -172,7 +174,6 @@ shinyServer(function(input, output, session) {
             )
         }
     })
-    
     
     
     # The selected file, if any
@@ -252,6 +253,7 @@ shinyServer(function(input, output, session) {
         updateSelectizeInput(session, "select", choices = n, selected = id)
     })
     
+    
     #Load gpx file and calculate the cumulative distance
     observe({
         validate(need(userFile(), message = FALSE))
@@ -296,6 +298,7 @@ shinyServer(function(input, output, session) {
         track$vegetation <- NA
         track$geometry <- trail$geometry
     })
+    
     
     #When the geometry changes update the map
     observe({
@@ -986,6 +989,7 @@ shinyServer(function(input, output, session) {
             addPolylines(data = line)  
     })
     
+    
     output$veg_pop_map <- renderLeaflet({
         validate(need(input$veg_dbl_click$x, message = FALSE))
         
@@ -1023,6 +1027,7 @@ shinyServer(function(input, output, session) {
             addPolylines(data = line)  
     })
     
+    
     output$info <- renderUI({ 
         #validate(need(start(), message = FALSE), 
         #         need(end(), message = FALSE), 
@@ -1032,16 +1037,14 @@ shinyServer(function(input, output, session) {
         tags$div(tags$b("Start: "), start(), tags$br(), 
                  tags$b("End: "), end(), tags$br(), 
                  tags$b("Total distance: "), round(total_distance()), "m")
-        
-        
     })
+    
     
     output$save <- renderUI({
         validate(need(track$geometry, message = FALSE))
         
         actionButton("save", "Save")
     })
-    
     
     
     output$geoStats <- renderPlot({
@@ -1073,6 +1076,7 @@ shinyServer(function(input, output, session) {
             xlab(element_blank()) +
             scale_fill_manual(values = geo_cl())
     })
+    
         
     output$vegStats <- renderPlot({
         validate(need(t <- veg_track(), message = "load a track file to see statistics"))
@@ -1120,7 +1124,7 @@ shinyServer(function(input, output, session) {
                    "WHERE ST_INTERSECTS(ve.geometry, 'SRID=7844;POINT(", input$lng, input$lat, ")'::geometry)"
         )
         
-        veg <- st_read(con, query = q)
+        st_read(con, query = q)
     })
     
     
@@ -1181,9 +1185,11 @@ shinyServer(function(input, output, session) {
             addPolygons(data = poly, color = cl)
     })
     
+    
     observeEvent(input$tabs, {
         addClass(selector = "body", class = "sidebar-collapse")
     })
+    
     
     output$geo_results <- renderDT({
         validate(need(geo_results(), message = FALSE))
@@ -1191,7 +1197,9 @@ shinyServer(function(input, output, session) {
         geo_results()
     })
     
+    
     gr_proxy <- DT::dataTableProxy("geo_results")
+    
      
     output$veg_results <- renderDT({
         validate(need(veg_results(), message = FALSE))
@@ -1199,7 +1207,9 @@ shinyServer(function(input, output, session) {
         veg_results()
      })
     
+    
     vr_proxy <- DT::dataTableProxy("veg_results")
+    
     
     geo_results <- reactive({
         validate(need(input$geo_search, message = FALSE), need(input$geo_fields, message = FALSE))
@@ -1243,7 +1253,6 @@ shinyServer(function(input, output, session) {
                         "');"
             )
         }
-        
         res <- dbGetQuery(con, q)
         
         select(res, c("id", input$geo_fields))
@@ -1292,16 +1301,17 @@ shinyServer(function(input, output, session) {
                         "');"
             )
         }
-        
         res <- dbGetQuery(con, q)
         
         select(res, c("id", input$veg_fields))
     })
     
+    
     observeEvent(input$search_tabs,{
         leafletProxy("results_map", session) %>%
             clearShapes()
     }, priority = 5)
+    
     
     observeEvent(input$search_tabs,{
         g <- gr_poly()
@@ -1320,6 +1330,7 @@ shinyServer(function(input, output, session) {
         leafletProxy("results_map", session) %>%
                 addPolygons(data = gpoly, color = "red", label = glabs) 
     }, priority = 1)
+    
         
     observeEvent(input$search_tabs,{
         v <- vr_poly()
@@ -1342,6 +1353,7 @@ shinyServer(function(input, output, session) {
             addPolygons(data = vpoly, color = "green", label = vlabs)
     }, priority = 1)
     
+    
     gr_poly <- eventReactive(gsr(),{
         validate(need(gsr()$id, message = FALSE))
         g <- gsr()$id
@@ -1352,10 +1364,9 @@ shinyServer(function(input, output, session) {
                    paste(g, collapse = ", "),
                    ');')
         
-        g <- st_read(con, query = q)
-        
-        g
+        st_read(con, query = q)
     })
+    
     
     gsr <- reactive({
         index <- input$geo_results_rows_selected
@@ -1364,14 +1375,12 @@ shinyServer(function(input, output, session) {
     })
         
         
-    
     output$geo_selected <- renderDT({
         s<- gr_poly()
         
         data.frame(id=s$id, Name=s$name, Description = s$desc)
             
     }, selection = 'single', options = list(searching = FALSE, lengthChange = FALSE))
-    
     
     
     observeEvent(input$geo_selected_rows_selected,{
@@ -1383,6 +1392,7 @@ shinyServer(function(input, output, session) {
             flyToBounds(lng1 = bb[[1]], lng2 = bb[[3]], lat1 = bb[[2]], lat2 = bb[[4]])
     })
     
+    
     vr_poly <- eventReactive(vsr(),{
         validate(need(vsr()$id, message = FALSE))
         v <- vsr()$id
@@ -1393,10 +1403,9 @@ shinyServer(function(input, output, session) {
                    paste(v, collapse = ", "),
                    ');')
         
-        v <- st_read(con, query = q)
-        
-        v
+        st_read(con, query = q)
     })
+    
     
     vsr <- reactive({
         index <- input$veg_results_rows_selected
@@ -1405,14 +1414,12 @@ shinyServer(function(input, output, session) {
     })
     
     
-    
     output$veg_selected <- renderDT({
         s<- vr_poly()
         
         data.frame(id=s$id, Name=s$x_evcname, Bioregion = s$bioregion)
         
     }, selection = 'single', options = list(searching = FALSE, lengthChange = FALSE))
-    
     
     
     observeEvent(input$veg_selected_rows_selected,{
@@ -1424,14 +1431,15 @@ shinyServer(function(input, output, session) {
             flyToBounds(lng1 = bb[[1]], lng2 = bb[[3]], lat1 = bb[[2]], lat2 = bb[[4]])
     })
     
+    
     observeEvent(input$g_select_all,{
         if (isTRUE(input$g_select_all)) {
             DT::selectRows(gr_proxy, input$geo_results_rows_all)
         } else {
             DT::selectRows(gr_proxy, NULL)
         }
-        
     })
+    
     
     observeEvent(input$v_select_all,{
         if (isTRUE(input$v_select_all)) {
@@ -1439,10 +1447,7 @@ shinyServer(function(input, output, session) {
         } else {
             DT::selectRows(vr_proxy, NULL)
         }
-        
     })
-    
-    
 })
 
 
