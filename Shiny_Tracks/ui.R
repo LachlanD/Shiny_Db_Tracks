@@ -11,6 +11,10 @@ library(shiny)
 library(leaflet)
 library(shinycssloaders)
 library(shinydashboard)
+library(shinyjs)
+library(shinyWidgets)
+library(DT)
+
 
 
 # Define UI for application that draws a histogram
@@ -19,7 +23,7 @@ shinyUI(
         dashboardHeader(title = "Victorian Shiny Tracks"),
 
         dashboardSidebar(
-            sidebarMenu(
+            sidebarMenu( id = "tabs",
                 menuItem("Current Location", tabName = "Location", icon = icon("compass"), selected = TRUE),
                 menuItem("Files", tabName = "Files", icon = icon("file-upload")),
                 menuItem("Statistics",
@@ -27,12 +31,14 @@ shinyUI(
                     menuSubItem("Vegetation", tabName = "VegStats"),
                     tabName = "Statistics", icon = icon("chart-bar")
                 ),
+                menuItem("Search", tabName = "Search", icon = icon("search")),
                 menuItem("About", tabName = "About", icon = icon("info-circle"))
                 
             )
         ),
         
         dashboardBody(
+            useShinyjs(),
             tabItems(
                 tabItem(tabName = "Location",
                     leafletOutput("location_map", height = 400),
@@ -90,7 +96,7 @@ shinyUI(
                             tabPanel("Geology",
                                 withSpinner(plotOutput("geoPlot", 
                                                        width='100%', 
-                                                       brush = "plot_brush", 
+                                                       brush = "geo_plot_brush", 
                                                        dblclick = "geo_dbl_click", 
                                                        click = "geo_click"),
                                             type = 8),
@@ -106,7 +112,7 @@ shinyUI(
                             tabPanel("Vegetation",
                                 withSpinner(plotOutput("vegPlot", 
                                                        width='100%', 
-                                                       brush = "plot_brush", 
+                                                       brush = "veg_plot_brush", 
                                                        dblclick = "veg_dbl_click", 
                                                        click = "veg_click"), 
                                             type = 8),
@@ -124,7 +130,63 @@ shinyUI(
                 ),
                 tabItem(tabName = "Statistics"),
                 tabItem(tabName = "GeoStats", withSpinner(plotOutput("geoStats"), type = 8)),
-                tabItem(tabName = "VegStats", withSpinner( plotOutput("vegStats"), type = 8)),
+                tabItem(tabName = "VegStats", withSpinner(plotOutput("vegStats"), type = 8)),
+                tabItem(tabName = "Search", 
+                        tabsetPanel(
+                            tabPanel("Geology",
+                                     searchInput(
+                                         inputId = "geo_search", label = "Keywords",
+                                         placeholder = "Enter Keywords here",
+                                         btnSearch = icon("search"),
+                                         btnReset = icon("remove"),
+                                         width = "50%"
+                                     ),
+                                     fluidRow(
+                                        column(3,
+                                            radioButtons("geo_text", "Search Type:", choices = c("Words", "Phrase", "Formal query"), inline = TRUE)
+                                        ), column(8,
+                                        checkboxGroupButtons("geo_fields", 
+                                                          "Search fields", 
+                                                          choiceNames = c("Name", "Description", "Lithology", "Age", "Rank", "Formation", "Observation Method"), 
+                                                          choiceValues = c("name", "desc", "lithology", "geolhist", "rank", "geolut", "obsmeth")
+                                                        )
+                                        ), column(1,
+                                            checkboxInput("g_select_all", "select all")
+                                        )
+                                     ),
+                                    DTOutput("geo_results")
+                                ),
+                            tabPanel("Vegetation",
+                                     searchInput(
+                                         inputId = "veg_search", label = "Keywords",
+                                         placeholder = "Enter Keywords here",
+                                         btnSearch = icon("search"),
+                                         btnReset = icon("remove"),
+                                         width = "50%"
+                                     ),
+                                     fluidRow(
+                                         column(4,
+                                            radioButtons("veg_text", "Search Type:", choices = c("Words", "Phrase", "Formal query"), inline = TRUE)
+                                         ), column(6,
+                                            checkboxGroupButtons("veg_fields", 
+                                                          "Search fields", 
+                                                          choiceNames = c("Name", "Bioregion", "Status", "Group", "Subgroup"), 
+                                                          choiceValues = c("x_evcname", "bioregion", "evcbcsdesc", "xgroupname", "xsubggroup")
+                                            )
+                                        ), column(2,
+                                            checkboxInput("v_select_all", "select all")
+                                        )
+                                     ),
+                                     DTOutput("veg_results")
+                                ),
+                            tabPanel("Results Map",
+                                     leafletOutput("results_map", height = 600),
+                                     DTOutput("geo_selected"),
+                                     DTOutput("veg_selected")
+                            ),
+                            id = "search_tabs"
+                        )
+                ),
                 tabItem(tabName = "About", 
                     column(width = 8,
                         "Author: Lachlan Dryburgh 2021 ", 

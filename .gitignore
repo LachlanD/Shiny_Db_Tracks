@@ -37,4 +37,5 @@ vignettes/*.pdf
 
 # Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
 rsconnect/
+*.yml
 Shiny_Tracks/config.yml

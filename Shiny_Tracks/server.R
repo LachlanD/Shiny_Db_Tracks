@@ -19,6 +19,9 @@ library(DBI)
 library(config)
 library(RPostgres)
 library(leaflet.extras)
+library(htmltools)
+library(shinyWidgets)
+library(DT)
 
 
 conn_args <- config::get("dataconnection")
@@ -42,23 +45,26 @@ shinyServer(function(input, output, session) {
         fitBounds(lng1 = 140.1, lng2 = 150.2, lat1 = -34.9, lat2 = -38.5) %>%
         addControlGPS(options = gpsOptions(position = "topleft", activate = TRUE, 
                                                 autoCenter = TRUE, maxZoom = 15, 
-                                                setView = TRUE))
-        
+                                                setView = TRUE)) %>%
+    activateGPS()
+    
+    
+    map2 <- leaflet() %>%
+        addTiles() %>%
+        fitBounds(lng1 = 140.1, lng2 = 150.2, lat1 = -34.9, lat2 = -38.5)
+    
 
-    leafletProxy("location_map", session) %>%
-        activateGPS()
-    
     output$location_map <- renderLeaflet(map)
-    output$file_map  <- renderLeaflet(map)
+    output$file_map  <- renderLeaflet(map2)
+    output$results_map <- renderLeaflet(map2)
     
-    
+
     #Map for pop up windows
     pop_map <- leaflet() %>% 
         addTiles()
     
     # Start at current location
     observeEvent(input$location_map_center, { 
-        
         updateNumericInput(session = session,
                            inputId = "lat",
                            value = round(input$location_map_center$lat, 3))
@@ -80,8 +86,8 @@ shinyServer(function(input, output, session) {
     names <- dbGetQuery(con, query)
     n <- names$id
     names(n)<-names$name
-    updateSelectizeInput(session, "select", choices = n, selected = NULL)
     
+    updateSelectizeInput(session, "select", choices = n, selected = NULL)
     
     
     observeEvent(input$go, {
@@ -294,7 +300,7 @@ shinyServer(function(input, output, session) {
     observe({
         validate(need(track$geometry, message = FALSE))
         
-        bb <- as.numeric(st_bbox(track$geometry))
+        #bb <- as.numeric(st_bbox(track$geometry))
         
         t <- track$geometry %>%
             st_combine() %>%
@@ -303,7 +309,7 @@ shinyServer(function(input, output, session) {
 
         leafletProxy("file_map", session) %>%
             clearShapes() %>%
-            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
+            #flyToBounds(lng1 = bb[[1]], lng2 = bb[[3]], lat1 = bb[[2]], lat2 = bb[[4]]) %>%
             addPolylines(data = t)
         
     }, priority = 1)
@@ -519,8 +525,8 @@ shinyServer(function(input, output, session) {
         validate(need(veg_track(), message = FALSE))
         t <- veg_track()
         
-        v <- viridis(length(unique(t$x_evcname)), option = "turbo")
-        names(v) <- unique(t$x_evcname)
+        v <- viridis(length(levels(t$x_evcname)), option = "turbo")
+        names(v) <- levels(t$x_evcname)
         
         v
     })
@@ -532,7 +538,7 @@ shinyServer(function(input, output, session) {
         if(x_axis == 'd') {
             validate(need(d <- total_distance(), message = FALSE))
             xmin <<- 0
-            xmax <<- ceiling(max(d))
+            xmax <<- ceiling(total_distance())
             updateSliderInput(session, "range", value = c(xmin, xmax), min = 0, max = xmax)
             
         } else {
@@ -579,7 +585,7 @@ shinyServer(function(input, output, session) {
         }
         
         if(!is.na(s[1])){
-            q <- paste('SELECT geometry, name',
+            q <- paste('SELECT geometry, name, "desc"',
                        'FROM "SG_GEOLOGICAL_UNIT_250K"',
                        'WHERE id =', s[1],';')
             
@@ -594,10 +600,16 @@ shinyServer(function(input, output, session) {
                 sf::st_cast(to = "LINESTRING", warn = FALsE) %>%
                 sf::st_sf()
             
+            label <-paste0('<div style="width:180px; white-space: normal"><b>Name: </b>', 
+                           g$name,
+                           '<br><b>Desc: </b>',
+                           g$desc, 
+                           '</div>')
+            
             leafletProxy("file_map", session) %>%
                 clearShapes() %>%
                 addPolylines(data = line) %>%
-                addPolygons(data = poly, color = as.character(geo_cl()[g$name]))
+                addPolygons(data = poly, color = as.character(geo_cl()[g$name]), label = HTML(label))
         }
     })
     
@@ -615,13 +627,13 @@ shinyServer(function(input, output, session) {
         }
         
         if(!is.na(s[1])){
-            q <- paste('SELECT geometry, X_evcname',
+            q <- paste('SELECT geometry, X_evcname, bioregion, evcbcsdesc',
                        'FROM "NV2005_EVCBCS"',
                        'WHERE id =', s[1],';')
             
-            g <- st_read(con, query = q)
+            v <- st_read(con, query = q)
             
-            poly <- g %>%
+            poly <- v %>%
                 st_cast(to = "POLYGON") %>%
                 st_sf()
             
@@ -630,10 +642,17 @@ shinyServer(function(input, output, session) {
                 sf::st_cast(to = "LINESTRING", warn = FALsE) %>%
                 sf::st_sf()
             
+            label <-paste0('<div style="width:180px; white-space: normal"><b>Name: </b>', 
+                           v$x_evcname,
+                           '<br><b>Bioreigon: </b>',
+                           v$bioregion, '<br><b>Status: </b>',
+                           v$evcbcsdesc,
+                           '</div>')
+            
             leafletProxy("file_map", session) %>%
                 clearShapes() %>%
                 addPolylines(data = line) %>%
-                addPolygons(data = poly, color = as.character(veg_cl()[g$x_evcname]))
+                addPolygons(data = poly, color = as.character(veg_cl()[v$x_evcname]), label = HTML(label))
         }
     })
     
@@ -643,13 +662,13 @@ shinyServer(function(input, output, session) {
         validate(need(track$dis, message = FALSE))
 
         if(x_axis == 'd') {
-            d <- track$dis
+            
             xmin <<- 0
-            xmax <<- ceiling(max(d))
+            xmax <<- ceiling(total_distance())
             updateSliderInput(session, "range", value = c(xmin, xmax), min = 0, max = xmax)
         } else {
-            xmin <<- min(track$time, na.rm = TRUE)
-            xmax <<- max(track$time, na.rm = TRUE)
+            xmin <<- track$time[1]
+            xmax <<- track$time[length(track$time)]
             updateSliderInput(session,
                               "range",
                               value = as.POSIXct(c(xmin, xmax), origin = origin),
@@ -659,22 +678,117 @@ shinyServer(function(input, output, session) {
     })
     
     
-
     #Zoom in when plot is brushed 
-    observeEvent(input$plot_brush,{
-        val<-input$plot_brush
+    observeEvent(input$geo_plot_brush,{
+        val<-input$geo_plot_brush
+        session$resetBrush("geo_plot_brush")
+       
         
         if(x_axis == 'd') {
-            xmin <<- max(val$xmin, 0)
-            xmax <<- min(val$xmax, max(track$dis))
+            
+            xmin <<- track$dis[sum(track$dis<val$xmin)]
+            xmax <<- track$dis[sum(track$dis<val$xmax)+1]
             updateSliderInput(session, "range",  value = c(xmin,xmax))
             
+            g <- track$geology[track$dis >= xmin & track$dis <= xmax]
         } else {
-            r <- range(t$time, na.rm = TRUE)
+            
             xmin <<- max(as.numeric(val$xmin), min(track$time, na.rm = TRUE))
             xmax <<- min(as.numeric(val$xmax), max(track$time, na.rm = TRUE))
             updateSliderInput(session, "range", value = as.POSIXct(c(xmin, xmax), origin = origin))
             
+            g <- track$geology[track$time >= xmin & track$time <= xmax]
+        }
+        
+        g <- na.omit(unique(g))
+        if(length(g)>0){
+            q <- paste('SELECT geometry, name, "desc"',
+                       'FROM "SG_GEOLOGICAL_UNIT_250K"',
+                       'WHERE id IN (', 
+                       paste(g, collapse = ", "),
+                       ');')
+            
+            g <- st_read(con, query = q)
+            
+            poly <- g$geometry %>%
+                st_cast(to = "POLYGON") %>%
+                st_sf()
+            
+            line <- track$geometry %>% 
+                sf::st_combine() %>%
+                sf::st_cast(to = "LINESTRING", warn = FALSE) %>%
+                sf::st_sf()
+            
+            label <-paste0('<div style="width:180px; white-space: normal"><b>Name: </b>', 
+                           g$name,
+                           '<br><b>Desc: </b>',
+                           g$desc, 
+                           '</div>')
+            labs <- lapply(label, HTML)
+                
+
+            
+            leafletProxy("file_map", session) %>%
+                clearShapes() %>%
+                addPolylines(data = line) %>%
+                addPolygons(data = poly, color = as.character(geo_cl()[g$name]), label = labs)
+        }
+            
+    })
+    
+    observeEvent(input$veg_plot_brush,{
+        val<-input$veg_plot_brush
+        session$resetBrush("veg_plot_brush")
+        
+        if(x_axis == 'd') {
+            xmin <<- track$dis[sum(track$dis<val$xmin)]
+            xmax <<- track$dis[sum(track$dis<val$xmax)+1]
+            updateSliderInput(session, "range",  value = c(xmin,xmax))
+            
+            seg <- (track$dis >= xmin) & (track$dis <= xmax)
+        } else {
+            
+            xmin <<- max(as.numeric(val$xmin), min(track$time, na.rm = TRUE))
+            xmax <<- min(as.numeric(val$xmax), max(track$time, na.rm = TRUE))
+            updateSliderInput(session, "range", value = as.POSIXct(c(xmin, xmax), origin = origin))
+            
+            seg <- (track$time >=xmin) & (track$time <= xmax)
+        }
+        v <- track$vegetation[seg]
+        
+        v <- na.omit(unique(v))
+        if(length(v)>0){
+            q <- paste('SELECT geometry, x_evcname, bioregion, evcbcsdesc',
+                       'FROM "NV2005_EVCBCS"',
+                       'WHERE id IN (', 
+                       paste(v, collapse = ", "),
+                       ');')
+            
+            v <- st_read(con, query = q)
+            
+            poly <- v$geometry %>%
+                st_cast(to = "POLYGON") %>%
+                st_sf()
+            
+            line <- track$geometry %>% 
+                sf::st_combine() %>%
+                sf::st_cast(to = "LINESTRING", warn = FALSE) %>%
+                sf::st_sf()
+            
+            label <-paste0('<div style="width:180px; white-space: normal"><b>Name: </b>', 
+                           v$x_evcname,
+                           '<br><b>Bioreigon: </b>',
+                           v$bioregion, '<br><b>Status: </b>',
+                           v$evcbcsdesc,
+                           '</div>')
+            labs <- lapply(label, HTML)
+            
+            leafletProxy("file_map", session) %>%
+                clearShapes() %>%
+                addPolylines(data = line) %>%
+                addPolygons(data = poly, 
+                            color = as.character(veg_cl()[v$x_evcname]), 
+                            label = labs)
         }
     })
     
@@ -686,6 +800,8 @@ shinyServer(function(input, output, session) {
         if(x_axis == 'd'){
             xmin <<- max(input$range[1], 0)
             xmax <<- min(input$range[2], max(track$dis))
+            
+            seg <- (track$dis >= xmin) & (track$dis <= xmax)
 
             start <- st_coordinates(track$geometry[track$dis >= xmin][1])
             end <- st_coordinates(track$geometry[track$dis >= xmax][1])
@@ -693,19 +809,23 @@ shinyServer(function(input, output, session) {
 
             xmin <<- max(as.numeric(input$range[1]), min(track$time, na.rm = TRUE))
             xmax <<- min(as.numeric(input$range[2]), max(track$time, na.rm = TRUE))
+            
+            seg <- (track$time >=xmin) & (track$time <= xmax)
 
             start <- st_coordinates(track$geometry[track$time >= xmin][1])
             end <- st_coordinates(track$geometry[track$time >= xmax][1])
         }
         
-
+        bb <- st_bbox(track$geometry[seg])
+        lng_margin = (bb[[3]]-bb[[1]])*0.05
+        lat_margin = (bb[[4]]-bb[[2]])*0.05
 
         # Also show the start and end points on map
         leafletProxy("file_map", session) %>%
             clearMarkers() %>%
+            flyToBounds(lng1 = bb[[1]]-lng_margin, lng2 = bb[[3]]+lng_margin, lat1 = bb[[2]]-lat_margin, lat2 = bb[[4]]+lat_margin) %>%
             addCircleMarkers(lng = start[1], lat = start[2], color = "green", fillOpacity = 0.5) %>%
             addCircleMarkers(lng = end[1], lat = end[2], color = "red", fillOpacity = 0.5)
-
     })
     
     
@@ -714,7 +834,8 @@ shinyServer(function(input, output, session) {
         validate(need(geo_track(), message = FALSE))
         validate(need(input$range, message = FALSE))
         
-        session$resetBrush("plot_brush")
+        session$resetBrush("geo_plot_brush")
+        
         
         t <- geo_track()
 
@@ -745,7 +866,7 @@ shinyServer(function(input, output, session) {
         validate(need(veg_track(), message = FALSE))
         validate(need(input$range, message = FALSE))
         
-        session$resetBrush("plot_brush")
+        session$resetBrush("veg_plot_brush")
         
         t <- veg_track()
         
@@ -829,7 +950,7 @@ shinyServer(function(input, output, session) {
     
     
     output$geo_pop_map <- renderLeaflet({
-        c <- input$geo_click
+        validate(need(input$geo_dbl_click$x, message = FALSE))
         
         t <- geo_track()
         
@@ -845,7 +966,7 @@ shinyServer(function(input, output, session) {
         
         line <- line %>% 
             sf::st_combine() %>%
-            sf::st_cast(to = "LINESTRING", warn = FALsE) %>%
+            sf::st_cast(to = "LINESTRING", warn = FALSE) %>%
             sf::st_sf()
         
         # gsf <- geo()
@@ -865,7 +986,7 @@ shinyServer(function(input, output, session) {
     })
     
     output$veg_pop_map <- renderLeaflet({
-        c <- input$veg_click
+        validate(need(input$veg_dbl_click$x, message = FALSE))
         
         t <-veg_track()
         
@@ -881,7 +1002,7 @@ shinyServer(function(input, output, session) {
         
         line <- line %>% 
             sf::st_combine() %>%
-            sf::st_cast(to = "LINESTRING", warn = FALsE) %>%
+            sf::st_cast(to = "LINESTRING", warn = FALSE) %>%
             sf::st_sf()
         
         
@@ -1058,6 +1179,268 @@ shinyServer(function(input, output, session) {
             clearShapes() %>%
             addPolygons(data = poly, color = cl)
     })
+    
+    observeEvent(input$tabs, {
+        addClass(selector = "body", class = "sidebar-collapse")
+    })
+    
+    output$geo_results <- renderDT({
+        validate(need(geo_results(), message = FALSE))
+                     
+        geo_results()
+    })
+    
+    gr_proxy <- DT::dataTableProxy("geo_results")
+     
+    output$veg_results <- renderDT({
+        validate(need(veg_results(), message = FALSE))
+        
+        veg_results()
+     })
+    
+    vr_proxy <- DT::dataTableProxy("veg_results")
+    
+    geo_results <- reactive({
+        validate(need(input$geo_search, message = FALSE), need(input$geo_fields, message = FALSE))
+        key <- input$geo_search
+        fields <- paste(input$geo_fields, collapse = '", "')
+        fields <- paste0('"',fields, '"')
+        cfields <- paste(input$geo_fields, collapse = "\"||' '||\"")
+        cfields <- paste0('"',cfields, '"')
+        
+        if(input$geo_text == "Words"){
+            q <- paste0('SELECT "id", ',
+                        fields,
+                        'FROM "SG_GEOLOGICAL_UNIT_250K" ',
+                        "WHERE to_tsvector('english', ",
+                        cfields,
+                        ') @@ ',
+                        " plainto_tsquery('english', '", 
+                        key,
+                        "');"
+            )
+        } else if(input$geo_text == "Phrase"){
+            q <- paste0('SELECT "id", ',
+                        fields,
+                        'FROM "SG_GEOLOGICAL_UNIT_250K" ',
+                        "WHERE to_tsvector('english', ",
+                        cfields,
+                        ') @@ ',
+                        " phraseto_tsquery('english', '", 
+                        key,
+                        "');"
+            )
+        } else {
+            q <- paste0('SELECT "id", ',
+                        fields,
+                        'FROM "SG_GEOLOGICAL_UNIT_250K" ',
+                        "WHERE to_tsvector('english', ",
+                        cfields,
+                        ') @@ ',
+                        " to_tsquery('english', '", 
+                        key,
+                        "');"
+            )
+        }
+        
+        res <- dbGetQuery(con, q)
+        
+        select(res, c("id", input$geo_fields))
+    })
+    
+    
+    veg_results <- reactive({
+        validate(need(input$veg_search, message = FALSE), need(input$veg_fields, message = FALSE))
+        key <- input$veg_search
+        fields <- paste(input$veg_fields, collapse = '", "')
+        fields <- paste0('"',fields, '"')
+        cfields <- paste(input$veg_fields, collapse = "\"||' '||\"")
+        cfields <- paste0('"',cfields, '"')
+        
+        if(input$veg_text == "Words"){
+            q <- paste0('SELECT "id",',
+                        fields,
+                        'FROM "NV2005_EVCBCS" ',
+                        "WHERE to_tsvector('english', ",
+                        cfields,
+                        ') @@ ',
+                        " plainto_tsquery('english', '", 
+                        key,
+                        "');"
+            )
+        } else if(input$veg_text == "Phrase"){
+            q <- paste0('SELECT "id",',
+                        fields,
+                        'FROM "NV2005_EVCBCS" ',
+                        "WHERE to_tsvector('english', ",
+                        cfields,
+                        ') @@ ',
+                        " phraseto_tsquery('english', '", 
+                        key,
+                        "');"
+            )
+        } else {
+            q <- paste0('SELECT "id", ',
+                        fields,
+                        'FROM "NV2005_EVCBCS" ',
+                        "WHERE to_tsvector('english', ",
+                        cfields,
+                        ') @@ ',
+                        " to_tsquery('english', '", 
+                        key,
+                        "');"
+            )
+        }
+        
+        res <- dbGetQuery(con, q)
+        
+        select(res, c("id", input$veg_fields))
+    })
+    
+    observeEvent(input$search_tabs,{
+        leafletProxy("results_map", session) %>%
+            clearShapes()
+    }, priority = 5)
+    
+    observeEvent(input$search_tabs,{
+        g <- gr_poly()
+        
+        gpoly <- g$geometry %>%
+            st_cast(to = "POLYGON") %>%
+            st_sf()
+            
+        glabel <-paste0('<div style="width:180px; white-space: normal"><b>Name: </b>', 
+                       g$name,
+                       '<br><b>Desc: </b>',
+                       g$desc, 
+                       '</div>')
+        glabs <- lapply(glabel, HTML)
+            
+        leafletProxy("results_map", session) %>%
+                addPolygons(data = gpoly, color = "red", label = glabs) 
+    }, priority = 1)
+        
+    observeEvent(input$search_tabs,{
+        v <- vr_poly()
+        
+        print(v)
+        
+        vpoly <- v$geometry %>%
+            st_cast(to = "POLYGON") %>%
+            st_sf()
+        
+        vlabel <-paste0('<div style="width:180px; white-space: normal"><b>Name: </b>', 
+                       v$x_evcname,
+                       '<br><b>Bioregion: </b>',
+                       v$bioregion, 
+                       '</div>')
+        vlabs <- lapply(vlabel, HTML)
+        
+
+        leafletProxy("results_map", session) %>%
+            addPolygons(data = vpoly, color = "green", label = vlabs)
+    }, priority = 1)
+    
+    gr_poly <- eventReactive(gsr(),{
+        validate(need(gsr()$id, message = FALSE))
+        g <- gsr()$id
+        
+        q <- paste('SELECT id, geometry, name, "desc"',
+                   'FROM "SG_GEOLOGICAL_UNIT_250K"',
+                   'WHERE id IN (', 
+                   paste(g, collapse = ", "),
+                   ');')
+        
+        g <- st_read(con, query = q)
+        
+        g
+    })
+    
+    gsr <- reactive({
+        index <- input$geo_results_rows_selected
+        
+        gr <- geo_results()[index,]
+    })
+        
+        
+    
+    output$geo_selected <- renderDT({
+        s<- gr_poly()
+        
+        data.frame(id=s$id, Name=s$name, Description = s$desc)
+            
+    }, selection = 'single', options = list(searching = FALSE, lengthChange = FALSE))
+    
+    
+    
+    observeEvent(input$geo_selected_rows_selected,{
+        index <- input$geo_selected_rows_selected
+        
+        bb <- st_bbox(gr_poly()[index,])
+        
+        leafletProxy("results_map", session) %>%
+            flyToBounds(lng1 = bb[[1]], lng2 = bb[[3]], lat1 = bb[[2]], lat2 = bb[[4]])
+    })
+    
+    vr_poly <- eventReactive(vsr(),{
+        validate(need(vsr()$id, message = FALSE))
+        v <- vsr()$id
+        
+        q <- paste('SELECT "id", "geometry", "x_evcname", "bioregion"',
+                   'FROM "NV2005_EVCBCS"',
+                   'WHERE id IN (', 
+                   paste(v, collapse = ", "),
+                   ');')
+        
+        v <- st_read(con, query = q)
+        
+        v
+    })
+    
+    vsr <- reactive({
+        index <- input$veg_results_rows_selected
+        
+        vr <- veg_results()[index,]
+    })
+    
+    
+    
+    output$veg_selected <- renderDT({
+        s<- vr_poly()
+        
+        data.frame(id=s$id, Name=s$x_evcname, Bioregion = s$bioregion)
+        
+    }, selection = 'single', options = list(searching = FALSE, lengthChange = FALSE))
+    
+    
+    
+    observeEvent(input$veg_selected_rows_selected,{
+        index <- input$veg_selected_rows_selected
+        
+        bb <- st_bbox(vr_poly()[index,])
+        
+        leafletProxy("results_map", session) %>%
+            flyToBounds(lng1 = bb[[1]], lng2 = bb[[3]], lat1 = bb[[2]], lat2 = bb[[4]])
+    })
+    
+    observeEvent(input$g_select_all,{
+        if (isTRUE(input$g_select_all)) {
+            DT::selectRows(gr_proxy, input$geo_results_rows_all)
+        } else {
+            DT::selectRows(gr_proxy, NULL)
+        }
+        
+    })
+    
+    observeEvent(input$v_select_all,{
+        if (isTRUE(input$v_select_all)) {
+            DT::selectRows(vr_proxy, input$veg_results_rows_all)
+        } else {
+            DT::selectRows(vr_proxy, NULL)
+        }
+        
+    })
+    
     
 })
 
