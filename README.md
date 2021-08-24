@@ -25,10 +25,13 @@ Incomplete. The statistic page will show the number of track point which fall wi
 
 ### Search
 
-The search function allows searching the text fields of the database and display the results on the map.
+The search function allows searching the text fields of the database using either keywords, frases or formal query text.  
 
 ![search](https://github.com/LachlanD/Shiny_Db_Tracks/blob/main/img/search.PNG?raw=true)
+
+Selecting a result by clicking on it will then be shown on the results in the map tab.
 ![results](https://github.com/LachlanD/Shiny_Db_Tracks/blob/main/img/results.PNG?raw=true)
+clicking the results below the map navigates to the position.
 
 
 ### Code
