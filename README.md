@@ -25,13 +25,25 @@ Incomplete. The statistic page will show the number of track point which fall wi
 The search function allows searching the text fields of the database using either keywords, frases or formal query text.  
 
 ![search](https://github.com/LachlanD/Shiny_Db_Tracks/blob/main/img/search.PNG?raw=true)
+
 Selecting a result by clicking on it will then be shown on the results in the map tab.
 
 ![results](https://github.com/LachlanD/Shiny_Db_Tracks/blob/main/img/results.PNG?raw=true)
-clicking the results below the map navigates to the position.
+
+Clicking the results below the map navigates to the position on the map.
 
 
 ### Code
-Written in R using the shiny web development framework hosted on shinyapps.io and postgreSQL/postGIS hosted on AWS.
+Written in R using the shiny development framework hosted on shinyapps.io and postgreSQL/postGIS hosted on AWS. 
+
+### Data
+Provided by opend data victoria.
+
+[https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000](https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000)
+[https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta](https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta)
+
+[CCA-4.0](https://creativecommons.org/licenses/by/4.0/legalcode)
+
+### [License](https://github.com/LachlanD/Shiny_Db_Tracks/blob/main/LICENSE)
 
 [https://lachland.shinyapps.io/Shiny_Tracks/](https://lachland.shinyapps.io/Shiny_Tracks/)
