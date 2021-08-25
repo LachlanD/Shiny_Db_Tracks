@@ -38,11 +38,12 @@ Written in R using the shiny development framework hosted on shinyapps.io and po
 
 ### Data
 Provided by opend data victoria.
-[https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000]
-(https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000)
-[https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta](https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta)
-[https://creativecommons.org/licenses/by/4.0/legalcode](https://creativecommons.org/licenses/by/4.0/legalcode)
 
-#### [License](https://github.com/LachlanD/Shiny_Db_Tracks/blob/main/LICENSE)
+[https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000](https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000)
+[https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta](https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta)
+
+[CCA-4.0](https://creativecommons.org/licenses/by/4.0/legalcode)
+
+### [License](https://github.com/LachlanD/Shiny_Db_Tracks/blob/main/LICENSE)
 
 [https://lachland.shinyapps.io/Shiny_Tracks/](https://lachland.shinyapps.io/Shiny_Tracks/)
