@@ -30,7 +30,7 @@ Selecting a result by clicking on it will then be shown on the results in the ma
 
 ![results](https://github.com/LachlanD/Shiny_Db_Tracks/blob/main/img/results.PNG?raw=true)
 
-clicking the results below the map navigates to the position.
+Clicking the results below the map navigates to the position on the map.
 
 
 ### Code
