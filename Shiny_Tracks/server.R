@@ -1070,8 +1070,7 @@ shinyServer(function(input, output, session) {
         
         n <- input$n_g_groups
         
-        if(n < 2)
-        {
+        if(n < 2) {
             gg<- ggplot(dat, aes(x=name, fill = name)) + 
                 geom_bar(stat="count") + 
                 theme(axis.text.x = element_text(angle = 90), legend.position="none") +
@@ -1116,7 +1115,7 @@ shinyServer(function(input, output, session) {
         n <- input$n_v_groups
         
         if(n < 2){
-            ggplot(dat, aes(x=x_evcname, fill = x_evcname)) + 
+            gg <- ggplot(dat, aes(x=x_evcname, fill = x_evcname)) + 
                 geom_bar(stat="count") + 
                 theme(axis.text.x = element_text(angle = 90), legend.position="none") +
                 xlab(element_blank()) +
