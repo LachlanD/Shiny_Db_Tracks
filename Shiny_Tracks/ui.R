@@ -129,8 +129,15 @@ shinyUI(
                     )
                 ),
                 tabItem(tabName = "Statistics"),
-                tabItem(tabName = "GeoStats", withSpinner(plotOutput("geoStats"), type = 8)),
-                tabItem(tabName = "VegStats", withSpinner(plotOutput("vegStats"), type = 8)),
+                tabItem(tabName = "GeoStats", 
+                        withSpinner(plotOutput("geoStats"), type = 8),
+                        numericInput("n_g_groups", "Number of groups:", value = 0, min = 0, max = 7, width = '80px'),
+                        uiOutput("geo_bucket")
+                        ),
+                tabItem(tabName = "VegStats", withSpinner(plotOutput("vegStats"), type = 8),
+                        numericInput("n_v_groups", "Number of groups:", value = 0, min = 0, max = 7, width = '80px'),
+                        uiOutput("veg_bucket")
+                        ),
                 tabItem(tabName = "Search", 
                         tabsetPanel(
                             tabPanel("Geology",

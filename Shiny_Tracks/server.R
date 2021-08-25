@@ -22,6 +22,7 @@ library(leaflet.extras)
 library(htmltools)
 library(shinyWidgets)
 library(DT)
+library(sortable)
 
 # Connect to the postGIS database using the config.yml file
 conn_args <- config::get("dataconnection")
@@ -1067,11 +1068,27 @@ shinyServer(function(input, output, session) {
         #     c[d[1,]$name.y] = c[d[1,]$name.y] + 1
         # }
         
-        ggplot(dat, aes(x=name, fill = name)) + 
-            geom_bar(stat="count") + 
-            theme(axis.text.x = element_text(angle = 90), legend.position="none") +
-            xlab(element_blank()) +
-            scale_fill_manual(values = geo_cl())
+        n <- input$n_g_groups
+        
+        if(n < 2)
+        {
+            gg<- ggplot(dat, aes(x=name, fill = name)) + 
+                geom_bar(stat="count") + 
+                theme(axis.text.x = element_text(angle = 90), legend.position="none") +
+                xlab(element_blank()) +
+                scale_fill_manual(values = geo_cl())
+        } else {
+            s <- sapply(1:n, function(x){sum(dat$name %in% input$geo_group[[x+1]])})
+            
+            d <- data.frame(g=1:n,s)
+            
+            gg<- ggplot(d, aes(x=g, y=s, fill= g)) + 
+                geom_bar(stat="identity") + 
+                theme(legend.position="none") +
+                xlab("Group") +
+                scale_fill_viridis()
+        }
+        gg
     })
     
         
@@ -1096,12 +1113,26 @@ shinyServer(function(input, output, session) {
         #     
         #     c[d[1,]$name.y] = c[d[1,]$name.y] + 1
         #}
+        n <- input$n_v_groups
+        
+        if(n < 2){
+            ggplot(dat, aes(x=x_evcname, fill = x_evcname)) + 
+                geom_bar(stat="count") + 
+                theme(axis.text.x = element_text(angle = 90), legend.position="none") +
+                xlab(element_blank()) +
+                scale_fill_manual(values = veg_cl())
+        } else {
+            s <- sapply(1:n, function(x){sum(dat$x_evcname %in% input$veg_group[[x+1]])})
             
-        ggplot(dat, aes(x=x_evcname, fill = x_evcname)) + 
-            geom_bar(stat="count") + 
-            theme(axis.text.x = element_text(angle = 90), legend.position="none") +
-            xlab(element_blank()) +
-            scale_fill_manual(values = veg_cl())
+            d <- data.frame(g=1:n,s)
+            
+            gg<- ggplot(d, aes(x=g, y=s, fill= g)) + 
+                geom_bar(stat="identity") + 
+                theme(legend.position="none") +
+                xlab("Group") +
+                scale_fill_viridis()
+        }
+        gg
     })
     
     
@@ -1445,7 +1476,42 @@ shinyServer(function(input, output, session) {
             DT::selectRows(vr_proxy, NULL)
         }
     })
+    
+    output$geo_bucket <- renderUI({
+        g <- geo_track()
+        n <- input$n_g_groups
+        
+        if(n>1){
+            rl<-sapply(1:n, function(x){paste0('add_rank_list("Group ',x,'",input_id = "geo_grp_',x,'")')})
+            el<-paste(rl, collapse = ", ")
+            ex <- paste('bucket_list(header = "Group Geology Types", add_rank_list("Ungrouped", labels = levels(g$name), input_id = "geo_ungrouped"),',
+                        el,
+                        ', group_name = "geo_group")'
+            )
+            
+            eval(parse(text = ex))
+        }
+    })
+    
+    output$veg_bucket <- renderUI({
+        v <- veg_track()
+        n <- input$n_v_groups
+        
+        if(n>1){
+            rl<-sapply(1:n, function(x){paste0('add_rank_list("Group ',x,'",input_id = "veg_grp_',x,'")')})
+            el<-paste(rl, collapse = ", ")
+            ex <- paste('bucket_list(header = "Group Vegetation Types", add_rank_list("Ungrouped", labels = levels(v$x_evcname), input_id = "veg_ungrouped"),',
+                        el,
+                        ', group_name = "veg_group")'
+            )
+            
+            eval(parse(text = ex))
+        }
+    })
 })
+
+
+
 
 
     
