@@ -23,6 +23,8 @@ library(htmltools)
 library(shinyWidgets)
 library(DT)
 library(sortable)
+library(suncalc)
+library(lubridate)
 
 # Connect to the postGIS database using the config.yml file
 conn_args <- config::get("dataconnection")
@@ -1049,35 +1051,50 @@ shinyServer(function(input, output, session) {
         validate(need(t <- geo_track(), message = "Load a track file to see statistics"))
         r <- input$range
         
+        l<-sapply(2:(nrow(t)-1), function(x){(t$dis[x+1]-t$dis[x-1])/2})
+        l<-c(t$dis[2]/2,l,(t$dis[nrow(t)]-t$dis[nrow(t)-1])/2)
+        
+        t$length_count<-as.numeric(l)
+        
+        if(!any(is.na(t$time))){
+            time<-as.numeric(t$time,origin = origin)
+            
+            ti<-sapply(2:(nrow(t)-1), function(x){(time[x+1]-time[x-1])/2})
+            ti <- c((time[2]-time[1])/2, ti, (time[nrow(t)]-time[nrow(t)-1])/2)
+            
+            t$time_count <- ti
+        }
+               
         if(x_axis == 'd'){
             dat <- t[track$dis>=xmin & track$dis<=xmax ,]
         } else {
             dat <- t[track$time>=xmin & track$time<=xmax,]
         }
         
-        #g <- max(t$GEO_GRP)
-        
-        #c <- rep(0, length(unique(t$name.y)))
-        #names(c) <- unique(t$name.y)
-        
-        #for(i in 1:g){
-        #     d<-t[t$GEO_GRP==g,]
-        #     
-        #     s <- max(d$Dis)-min(d$Dis)
-        #     
-        #     c[d[1,]$name.y] = c[d[1,]$name.y] + 1
-        # }
-        
         n <- input$n_g_groups
         
         if(n < 2) {
-            gg<- ggplot(dat, aes(x=name, fill = name)) + 
+            if(input$geo_weight == 'distance'){
+                gg <-ggplot(dat, aes(x=name, fill = name, weight = length_count))
+            } else if(input$geo_weight == 'time'){
+                gg <- ggplot(dat, aes(x=name, fill = name, weight = time_count))
+            } else {
+                gg <- ggplot(dat, aes(x=name, fill = name))
+            }
+            
+            gg <- gg + 
                 geom_bar(stat="count") + 
                 theme(axis.text.x = element_text(angle = 90), legend.position="none") +
                 xlab(element_blank()) +
                 scale_fill_manual(values = geo_cl())
         } else {
-            s <- sapply(1:n, function(x){sum(dat$name %in% input$geo_group[[x+1]])})
+            if(input$geo_weight == 'distance'){
+                s <- sapply(1:n, function(x){sum(dat$length_count[dat$name %in% input$geo_group[[x+1]]])})
+            } else if(input$geo_weight == 'time'){
+                s <- sapply(1:n, function(x){sum(dat$time_count[dat$name %in% input$geo_group[[x+1]]])})
+            }else{
+                s <- sapply(1:n, function(x){sum(dat$name %in% input$geo_group[[x+1]])})
+            }
             
             d <- data.frame(g=1:n,s)
             
@@ -1156,32 +1173,84 @@ shinyServer(function(input, output, session) {
     
     
     output$local_geology <- renderUI({
+        invalidateLater(1000)
         g <- local_geo()
+        sc <- getSunlightTimes(Sys.Date(), input$lat, input$lng, tz= "Australia/Victoria")
+        sn <- getSunlightTimes(Sys.Date() + days(1), input$lat, input$lng, tz = "Australia/Victoria")
         
-        tags$div(tags$b("Name: "), g$name, tags$br(),
-                    tags$b("Description: "), g$desc, tags$br(),
-                    tags$b("Formation: "), g$geolut,tags$br(),
-                    tags$b("Lithology: "), g$lithology,tags$br(),
-                    tags$b("History: "), g$geolhist,tags$br()
-                           
+        if(Sys.time()<sc$sunrise)
+            sr <- sc$sunrise
+        else
+            sr <- sn$sunrise
+        
+        if(Sys.time()<sc$sunset)
+            ss <- sc$sunset
+        else
+            ss <- sn$sunset
+        
+        
+        
+        moon <- getMoonIllumination(Sys.Date())
+        
+        fluidRow(
+            column(8,
+                tags$div(tags$b("Name: "), g$name, tags$br(),
+                            tags$b("Description: "), g$desc, tags$br(),
+                            tags$b("Formation: "), g$geolut,tags$br(),
+                            tags$b("Lithology: "), g$lithology,tags$br(),
+                            tags$b("History: "), g$geolhist,tags$br()
+                )
+            ),
+            column(4,
+                   tags$div(Sys.time(), tags$br(),
+                            "Sunrise", format(sr, tz="Australia/Victoria", usetz = TRUE), tags$br(),
+                            "Sunset", format(ss, tz="Australia/Victoria", usetz = TRUE), tags$br(),
+                            "Moon phase", round(moon$phase, 3)
+                            )
+            )
         )
     })
     
     
     output$local_vegetation <- renderUI({
         v <- local_veg()
+        invalidateLater(1000)
         
         name <- v$x_evcname
         if(length(name) == 0)
            name <- "No native vegetation recorded here"
         
-        tags$div(tags$b("Name: "), name, tags$br(), 
-                 tags$b("Subgroup: "), v$xsubggroup, tags$br(),
-                 tags$b("Group: "), v$xgroupname, tags$br(),
-                 tags$b("Bioregion: "), v$bioregion, tags$br(), 
-                 tags$b("Status: "), v$evcbcsdesc)
-                 
+        sc <- getSunlightTimes(Sys.Date(), input$lat, input$lng, tz= "Australia/Victoria")
+        sn <- getSunlightTimes(Sys.Date() + days(1), input$lat, input$lng, tz = "Australia/Victoria")
+        moon <- getMoonIllumination(Sys.Date())
         
+        if(Sys.time()<sc$sunrise)
+            sr <- sc$sunrise
+        else
+            sr <- sn$sunrise
+        
+        if(Sys.time()<sc$sunset)
+            ss <- sc$sunset
+        else
+            ss <- sn$sunset
+        
+        fluidRow(
+            column(8,
+                tags$div(tags$b("Name: "), name, tags$br(), 
+                         tags$b("Subgroup: "), v$xsubggroup, tags$br(),
+                         tags$b("Group: "), v$xgroupname, tags$br(),
+                         tags$b("Bioregion: "), v$bioregion, tags$br(), 
+                         tags$b("Status: "), v$evcbcsdesc)
+            ),
+            column(4,
+               tags$div(Sys.time(), tags$br(),
+                        "Sunrise", format(sr, tz="Australia/Victoria", usetz = TRUE), tags$br(),
+                        "Sunset", format(ss, tz="Australia/Victoria", usetz = TRUE), tags$br(),
+                        "Moon phase", round(moon$phase, 3)
+               )
+            )
+            
+        )
     })
     
     

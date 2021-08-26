@@ -14,6 +14,7 @@ library(shinydashboard)
 library(shinyjs)
 library(shinyWidgets)
 library(DT)
+library(shinyTime)
 
 
 
@@ -26,14 +27,9 @@ shinyUI(
             sidebarMenu( id = "tabs",
                 menuItem("Current Location", tabName = "Location", icon = icon("compass"), selected = TRUE),
                 menuItem("Files", tabName = "Files", icon = icon("file-upload")),
-                menuItem("Statistics",
-                    menuSubItem("Geology", tabName = "GeoStats"),
-                    menuSubItem("Vegetation", tabName = "VegStats"),
-                    tabName = "Statistics", icon = icon("chart-bar")
-                ),
+                menuItem("Statistics",tabName = "Statistics", icon = icon("chart-bar")),
                 menuItem("Search", tabName = "Search", icon = icon("search")),
                 menuItem("About", tabName = "About", icon = icon("info-circle"))
-                
             )
         ),
         
@@ -128,16 +124,31 @@ shinyUI(
                         )
                     )
                 ),
-                tabItem(tabName = "Statistics"),
-                tabItem(tabName = "GeoStats", 
-                        withSpinner(plotOutput("geoStats"), type = 8),
-                        numericInput("n_g_groups", "Number of groups:", value = 0, min = 0, max = 7, width = '80px'),
-                        uiOutput("geo_bucket")
-                        ),
-                tabItem(tabName = "VegStats", withSpinner(plotOutput("vegStats"), type = 8),
-                        numericInput("n_v_groups", "Number of groups:", value = 0, min = 0, max = 7, width = '80px'),
-                        uiOutput("veg_bucket")
-                        ),
+                tabItem(tabName = "Statistics",
+                        tabsetPanel(
+                        
+                            tabPanel("Filters",
+                                    radioButtons("geo_weight", 
+                                                  label = "Weight:", 
+                                                  choices = c("count", "distance", "time")
+                                    ),
+                                    numericRangeInput("stat_range", label = "range:", value = c(0,100)),
+                                    numericRangeInput("ele_range", label = "elevation range:", value = c(0,100)),
+                                    timeInput("time_filter_start", label = "between hours of:"),
+                                    timeInput("time_filter_start", label = "and:")
+                            ),
+                            tabPanel("Geology", 
+                                    withSpinner(plotOutput("geoStats"), type = 8),
+                                    numericInput("n_g_groups", "Number of groups:", value = 0, min = 0, max = 7, width = '80px'),
+                                    uiOutput("geo_bucket")
+                            ),
+                            tabPanel("Vegetation", 
+                                    withSpinner(plotOutput("vegStats"), type = 8),
+                                    numericInput("n_v_groups", "Number of groups:", value = 0, min = 0, max = 7, width = '80px'),
+                                    uiOutput("veg_bucket")
+                            )
+                        )
+                ),
                 tabItem(tabName = "Search", 
                         tabsetPanel(
                             tabPanel("Geology",
