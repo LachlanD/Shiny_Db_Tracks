@@ -29,6 +29,7 @@ shinyUI(
                 menuItem("Files", tabName = "Files", icon = icon("file-upload")),
                 menuItem("Statistics",tabName = "Statistics", icon = icon("chart-bar")),
                 menuItem("Search", tabName = "Search", icon = icon("search")),
+                menuItem("Export", tabName = "Export", icon = icon("file-download")),
                 menuItem("About", tabName = "About", icon = icon("info-circle"))
             )
         ),
@@ -127,8 +128,10 @@ shinyUI(
                 tabItem(tabName = "Statistics",
                         tabsetPanel(
                         
-                            tabPanel("Filters",
-                                    radioButtons("geo_weight", 
+                            tabPanel("Data",
+                                    radioButtons("batch", label = "Data:", choiceNames = c("Current Data", "Batch Files"), choiceValues = c("current", "batch")),
+                                    selectizeInput("stat_select", label = "Select Files", choices = NULL),
+                                    radioButtons("weight", 
                                                   label = "Weight:", 
                                                   choices = c("count", "distance", "time")
                                     ),

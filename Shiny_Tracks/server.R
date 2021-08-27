@@ -26,15 +26,6 @@ library(sortable)
 library(suncalc)
 library(lubridate)
 
-# Connect to the postGIS database using the config.yml file
-conn_args <- config::get("dataconnection")
-con <- dbConnect(RPostgres::Postgres(),
-                 host = conn_args$server,
-                 port = conn_args$port,
-                 dbname = conn_args$database,
-                 user = conn_args$uid,
-                 password = conn_args$pwd,
-                 bigint = "integer")
 
 
 #Set system variable
@@ -43,6 +34,16 @@ origin <- "1970-01-01" #R Epoch
 crs <- st_crs(7844) #Coordinate reference system used in my db
 
 shinyServer(function(input, output, session) {
+    # Connect to the postGIS database using the config.yml fil
+    #Give each session a separate connection, for separate temp tables
+    conn_args <- config::get("dataconnection")
+    con <- dbConnect(RPostgres::Postgres(),
+                     host = conn_args$server,
+                     port = conn_args$port,
+                     dbname = conn_args$database,
+                     user = conn_args$uid,
+                     password = conn_args$pwd,
+                     bigint = "integer")
     
     #Main map initialise on Vic
     map <- leaflet() %>%
