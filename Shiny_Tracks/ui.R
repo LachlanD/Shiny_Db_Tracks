@@ -129,16 +129,37 @@ shinyUI(
                         tabsetPanel(
                         
                             tabPanel("Data",
-                                    radioButtons("batch", label = "Data:", choiceNames = c("Current Data", "Batch Files"), choiceValues = c("current", "batch")),
-                                    selectizeInput("stat_select", label = "Select Files", choices = NULL),
-                                    radioButtons("weight", 
-                                                  label = "Weight:", 
-                                                  choices = c("count", "distance", "time")
+                                     fluidRow(
+                                        column(6,
+                                            radioButtons("batch", label = "Data:", choiceNames = c("Current Data", "Batch Files"), choiceValues = c("current", "batch")),
+                                            selectizeInput("stat_select", label = "Select Files", choices = NULL)
+                                        ),
+                                        column(6,
+                                            radioButtons("weight", 
+                                                          label = "Weight:", 
+                                                          choices = c("count", "distance", "time")
+                                            )
+                                        )
                                     ),
-                                    numericRangeInput("stat_range", label = "range:", value = c(0,100)),
-                                    numericRangeInput("ele_range", label = "elevation range:", value = c(0,100)),
-                                    timeInput("time_filter_start", label = "between hours of:"),
-                                    timeInput("time_filter_start", label = "and:")
+                                    tags$h3("Filters"),
+                                    column(6,
+                                        checkboxInput(inputId = "check_range", label = "filter distance range"),
+                                        numericRangeInput("stat_range", label = "range:", value = c(0,100)),
+                                        checkboxInput(inputId = "check_elevaation", label = "filter elevation"),
+                                        numericRangeInput("ele_range", label = "elevation range:", value = c(0,100)),
+                                        checkboxInput(inputId = "check_date", label = "filter dates"),
+                                        dateRangeInput("date_range", label = "Between Dates"),
+                                    ),
+                                    column(6,
+                                        checkboxInput(inputId = "check_time", label = "filter time of day"),
+                                        column(6,timeInput("time_filter_start", label = "between hours of:", seconds = FALSE)),
+                                        column(6,timeInput("time_filter_start", label = "and:", seconds = FALSE)),
+                                        checkboxInput(inputId = "check_sunrise", label = "filter sunrise offset"),
+                                        numericRangeInput("sunrise_offset", label = "Sunrise +/- minutes:", value = c(-60,60)),
+                                        checkboxInput(inputId = "check_sunset", label = "filter sunset offset"),
+                                        numericRangeInput("sunset_offset", label = "Sunset +/- minutes:", value = c(-60,60))
+                                    )
+
                             ),
                             tabPanel("Geology", 
                                     withSpinner(plotOutput("geoStats"), type = 8),
