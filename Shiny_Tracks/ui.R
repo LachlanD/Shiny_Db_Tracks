@@ -28,7 +28,7 @@ shinyUI(
                 menuItem("Current Location", tabName = "Location", icon = icon("compass"), selected = TRUE),
                 menuItem("Files", tabName = "Files", icon = icon("file-upload")),
                 menuItem("Statistics",tabName = "Statistics", icon = icon("chart-bar")),
-                menuItem("Search", tabName = "Search", icon = icon("search")),
+                menuItem("Search", tabName = "Search", icon = icon("search"), selected = TRUE),
                 menuItem("Export", tabName = "Export", icon = icon("file-download")),
                 menuItem("About", tabName = "About", icon = icon("info-circle"))
             )
@@ -132,12 +132,13 @@ shinyUI(
                                      fluidRow(
                                         column(6,
                                             radioButtons("batch", label = "Data:", choiceNames = c("Current Data", "Batch Files"), choiceValues = c("current", "batch")),
-                                            selectizeInput("stat_select", label = "Select Files", choices = NULL)
+                                            selectizeInput("stat_select", label = "Select Files", choices = NULL, multiple = TRUE)
                                         ),
                                         column(6,
                                             radioButtons("weight", 
-                                                          label = "Weight:", 
-                                                          choices = c("count", "distance", "time")
+                                                        label = "Weight:", 
+                                                        choices = c("count", "distance", "time"),
+                                                        selected = "count"
                                             )
                                         )
                                     ),

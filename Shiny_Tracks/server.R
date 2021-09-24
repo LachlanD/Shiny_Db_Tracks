@@ -35,7 +35,7 @@ crs <- st_crs(7844) #Coordinate reference system used in my db
 
 shinyServer(function(input, output, session) {
     # Connect to the postGIS database using the config.yml fil
-    #Give each session a separate connection, for separate temp tables
+    #Give each session a separate connection, for separate temp tablesconn_args <- config::get("dataconnection")
     conn_args <- config::get("dataconnection")
     con <- dbConnect(RPostgres::Postgres(),
                      host = conn_args$server,
@@ -44,6 +44,9 @@ shinyServer(function(input, output, session) {
                      user = conn_args$uid,
                      password = conn_args$pwd,
                      bigint = "integer")
+    
+    
+    
     
     #Main map initialise on Vic
     map <- leaflet() %>%
@@ -79,6 +82,7 @@ shinyServer(function(input, output, session) {
     names(n)<-names$name
     
     updateSelectizeInput(session, "select", choices = n, selected = NULL)
+    
     
     output$location_map <- renderLeaflet(map)
     output$file_map  <- renderLeaflet(map2)
@@ -154,6 +158,7 @@ shinyServer(function(input, output, session) {
         track$geology <- t$geology
         track$vegetation <- t$vegetation
         track$geometry <- t$geometry
+        track$length <- t$length
         
         
         if(!all(is.na(t$time))) {
@@ -224,6 +229,7 @@ shinyServer(function(input, output, session) {
         db_points <- data.frame(track_seg_point_id = track$track_seg_point_id, 
                                 ele = track$ele,
                                 dis = track$dis,
+                                length = track$length,
                                 track_fid = rep(id[1,], n),
                                 time = as.POSIXct(track$time, tz = "Australia/Victoria", origin = origin)
                                 )
@@ -266,9 +272,15 @@ shinyServer(function(input, output, session) {
         trail <- sf::st_read(u$datapath, layer = "track_points", quiet = TRUE)
         
         trail<-st_transform(trail, crs)
+        n<- nrow(trail)
+        
+        d<-as.numeric(st_distance(trail[1:n-1,],trail[2:n,], by_element = TRUE))
+        
 
-        d<-sf::st_distance(trail)
-        trail$dis <- as.numeric(cumsum(d[1,]))/1000
+        l<-sapply(2:(n-1), function(x){d[x-1]/2+d[x+1]/2})
+        l<-c(d[1]/2,l,d[n]/2)
+        
+        dis <- as.numeric(c(0,cumsum(d)))
         if(!all(is.na(trail$time))) {
             trail$time <- na.approx(as.numeric(trail$time))
             updateRadioButtons(
@@ -294,12 +306,13 @@ shinyServer(function(input, output, session) {
         track$track_fid <- NA
         track$track_seg_point_id <- trail$track_seg_point_id
         track$ele <- trail$ele
-        track$dis <- trail$dis
+        track$dis <- dis
         track$id <- NA
         track$time <- trail$time
         track$geology <- NA
         track$vegetation <- NA
         track$geometry <- trail$geometry
+        track$length <- l
     })
     
     
@@ -1049,35 +1062,20 @@ shinyServer(function(input, output, session) {
     
     
     output$geoStats <- renderPlot({
-        validate(need(t <- geo_track(), message = "Load a track file to see statistics"))
+        validate(need(dat <- get_geo_stats(), message = "Load a track file to see statistics"))
         r <- input$range
         
         l<-sapply(2:(nrow(t)-1), function(x){(t$dis[x+1]-t$dis[x-1])/2})
         l<-c(t$dis[2]/2,l,(t$dis[nrow(t)]-t$dis[nrow(t)-1])/2)
         
-        t$length_count<-as.numeric(l)
         
-        if(!any(is.na(t$time))){
-            time<-as.numeric(t$time,origin = origin)
-            
-            ti<-sapply(2:(nrow(t)-1), function(x){(time[x+1]-time[x-1])/2})
-            ti <- c((time[2]-time[1])/2, ti, (time[nrow(t)]-time[nrow(t)-1])/2)
-            
-            t$time_count <- ti
-        }
-               
-        if(x_axis == 'd'){
-            dat <- t[track$dis>=xmin & track$dis<=xmax ,]
-        } else {
-            dat <- t[track$time>=xmin & track$time<=xmax,]
-        }
         
         n <- input$n_g_groups
         
         if(n < 2) {
-            if(input$geo_weight == 'distance'){
+            if(input$weight == 'distance'){
                 gg <-ggplot(dat, aes(x=name, fill = name, weight = length_count))
-            } else if(input$geo_weight == 'time'){
+            } else if(input$weight == 'time'){
                 gg <- ggplot(dat, aes(x=name, fill = name, weight = time_count))
             } else {
                 gg <- ggplot(dat, aes(x=name, fill = name))
@@ -1203,7 +1201,7 @@ shinyServer(function(input, output, session) {
                 )
             ),
             column(4,
-                   tags$div(Sys.time(), tags$br(),
+                   tags$div(format(Sys.time(), tz="Australia/Victoria", usetz = TRUE), tags$br(),
                             "Sunrise", format(sr, tz="Australia/Victoria", usetz = TRUE), tags$br(),
                             "Sunset", format(ss, tz="Australia/Victoria", usetz = TRUE), tags$br(),
                             "Moon phase", round(moon$phase, 3)
@@ -1244,7 +1242,7 @@ shinyServer(function(input, output, session) {
                          tags$b("Status: "), v$evcbcsdesc)
             ),
             column(4,
-               tags$div(Sys.time(), tags$br(),
+               tags$div(format(Sys.time(), tz="Australia/Victoria", usetz = TRUE) , tags$br(),
                         "Sunrise", format(sr, tz="Australia/Victoria", usetz = TRUE), tags$br(),
                         "Sunset", format(ss, tz="Australia/Victoria", usetz = TRUE), tags$br(),
                         "Moon phase", round(moon$phase, 3)
@@ -1576,6 +1574,29 @@ shinyServer(function(input, output, session) {
             
             eval(parse(text = ex))
         }
+    })
+    
+    observeEvent(input$batch,{
+        if(input$batch == 'batch'){
+            query <- paste('SELECT id, name FROM tracks')
+            names <- dbGetQuery(con, query)
+            n <- names$id
+            names(n)<-names$name
+            
+            updateSelectizeInput(session, "stat_select", choices = n, selected = NULL)
+        }else{
+            updateSelectizeInput(session, "stat_select", choices = list(), selected = NULL)
+        }
+    })
+    
+    get_stats_geo <- reactive({
+        if(input$batch == 'current'){
+            p <- geo_track()
+        } else {
+                
+        }
+        
+        
     })
 })
 
