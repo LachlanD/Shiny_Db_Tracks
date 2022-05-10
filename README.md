@@ -37,7 +37,7 @@ Clicking the results below the map navigates to the position on the map.
 Written in R using the shiny development framework hosted on shinyapps.io and postgreSQL/postGIS hosted on AWS. 
 
 ### Data
-Provided by opend data victoria.
+Provided by open data victoria.
 
 [https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000](https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000)
 [https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta](https://discover.data.vic.gov.au/dataset/native-vegetation-modelled-2005-ecological-vegetation-classes-with-bioregional-conservation-sta)
